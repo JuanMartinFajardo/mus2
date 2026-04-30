@@ -16,14 +16,10 @@ document.getElementById('btn-create').addEventListener('click', () => {
     const randomId = 'MUS-' + Math.floor(Math.random() * 10000);
     peer = new Peer(randomId);
 
-// Escuchar errores generales de PeerJS
-peer.on('error', (err) => {
-    if (err.type === 'peer-unavailable') {
-        statusMsg.innerText = "❌ Error: No se ha encontrado ninguna partida con ese código.";
-    } else {
-        statusMsg.innerText = "❌ Error de conexión: " + err.type;
-    }
-});
+    peer.on('open', (id) => {
+        myIdDisplay.innerText = id;
+        statusMsg.innerText = "Esperando a que se conecte tu amigo...";
+    });
 
     peer.on('connection', (connection) => {
         conn = connection;
@@ -85,4 +81,12 @@ btnDeal.addEventListener('click', () => {
         type: 'deal',
         cards: susCartas
     });
+});
+
+peer.on('error', (err) => {
+    if (err.type === 'peer-unavailable') {
+        statusMsg.innerText = "❌ Error: No se ha encontrado ninguna partida con ese código.";
+    } else {
+        statusMsg.innerText = "❌ Error de conexión: " + err.type;
+    }
 });
