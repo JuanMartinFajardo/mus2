@@ -3,46 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mus</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Mus en Python</title>
+    <!-- Le pedimos el CSS a Python -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Librería para hablar con Python en tiempo real -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    <!-- Cargamos la librería mágica para conectarnos -->
-    <!--<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script> -->
 </head>
 <body>
     <div id="setup-screen" class="screen">
-        <h1>🎴 Mus P2P</h1>
+        <h1>🎴 Mus Autoritativo</h1>
         <div class="panel">
-            <h3>Soy el Host</h3>
-            <button id="btn-create">Crear Partida</button>
-            <p>Tu código para compartir es: <span id="my-id" class="highlight">...</span></p>
-        </div>
-        
-        <div class="panel">
-            <h3>Soy el Invitado</h3>
-            <input type="text" id="join-id" placeholder="Introduce el código del Host">
-            <button id="btn-join">Conectarse</button>
+            <h3>Bienvenido al Tapete</h3>
+            <input type="text" id="nombre-jugador" placeholder="Tu nombre...">
+            <button id="btn-unirse">Sentarse a jugar</button>
         </div>
         <p id="status-msg"></p>
     </div>
 
     <div id="game-screen" class="screen hidden">
-            <div class="table">
-                <div id="opponent-area" class="player-area">
-                    <p>Rival - Puntos: <span id="puntos-rival" class="highlight">0</span>/40</p>
-                    <p id="turno-rival" class="turno-indicador hidden">⚠️ El rival habla</p>
-                    <div class="cards-placeholder">[Cartas del rival ocultas]</div>
-                </div>
+        <div class="table">
+            <div id="opponent-area" class="player-area">
+                <p>Rival - Puntos: <span id="puntos-rival" class="highlight">0</span>/40</p>
+                <p id="turno-rival" class="turno-indicador hidden">⚠️ El rival habla</p>
+                <div class="cards-placeholder">[Cartas del rival ocultas]</div>
+            </div>
                 
-        <div class="center-area">
+            <div class="center-area">
                 <div id="betting-log" class="hidden">
                     <!-- Aquí aparecerá Grande: 2, Chica: 0, etc. -->
                 </div>
-                <p id="game-log">Esperando para repartir...</p>
+                <div id="game-log">Esperando para repartir...</div>
                 
                 <div id="action-buttons" class="hidden">
-                    <!-- Botones anteriores -->
+                    <!-- Botones -->
                     <button id="btn-deal" class="hidden">Repartir Cartas</button>
                     <button id="btn-pedrete" class="hidden">¡Pedrete!</button>
                     <button id="btn-mus" class="hidden">Mus</button>
@@ -50,7 +43,7 @@
                     <button id="btn-descartar" class="hidden">Descartar (0)</button>
                     <button id="btn-next-round" class="hidden">Siguiente ronda</button>
 
-                    <!-- NUEVOS: Botones de Iniciar Apuesta -->
+                    <!-- Botones de Iniciar Apuesta -->
                     <div id="apuesta-iniciar" class="apuesta-grupo hidden">
                         <div class="apuesta-col">
                             <input type="number" id="in-envidar" value="2" min="1">
@@ -60,7 +53,7 @@
                         <button id="btn-ordago">Órdago</button>
                     </div>
 
-                    <!-- NUEVOS: Botones de Responder Apuesta -->
+                    <!-- Botones de Responder Apuesta -->
                     <div id="apuesta-responder" class="apuesta-grupo hidden">
                         <button id="btn-ver">Ver</button>
                         <div class="apuesta-col">
@@ -73,16 +66,17 @@
                 </div>
             </div>
 
-                <div id="my-area" class="player-area">
-                    <p id="mi-turno" class="turno-indicador hidden">⚠️ Tú hablas</p>
-                    <p>Tú <span id="mi-rol" class="highlight"></span> - Puntos: <span id="puntos-mios" class="highlight">0</span>/40</p>
-                    <div id="my-cards" class="cards-placeholder">Tus cartas aparecerán aquí</div>
-                </div>
+            <div id="my-area" class="player-area">
+                <p id="mi-turno" class="turno-indicador hidden">⚠️ Tú hablas</p>
+                <p>Tú <span id="mi-rol" class="highlight"></span> - Puntos: <span id="puntos-mios" class="highlight">0</span>/40</p>
+                <div id="my-cards" class="cards-placeholder">Tus cartas aparecerán aquí</div>
             </div>
         </div>
-<div class="watermark">Created by Juan Martin Fajardo</div>
+    </div>
+    
+    <div class="watermark">Created by Juan Martin Fajardo</div>
 
-    <!--<script src="app.js"></script>-->
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <!-- Le pedimos nuestro código visual a Python -->
+    <script src="/static/app.js"></script>
 </body>
 </html>
