@@ -5,18 +5,19 @@ let isHost = false;
 let soyMano = false;
 let misCartas = [];
 let baraja = [];
-let descartes = []; // NUEVO: Montón de cartas descartadas
+let descartes = []; 
 let puntosMios = 0;
 let puntosRival = 0;
 let faseJuego = 'espera'; 
 let cartasSeleccionadas = [];
-let descartesListos = 0; // NUEVO: Para sincronizar que ambos hayan tirado cartas
+let descartesListos = 0; 
 
 // Variables del motor de apuestas
 const fasesApuesta = ['Grande', 'Chica', 'Pares', 'Juego'];
 let indiceFaseActual = 0;
 let botes = { 'Grande': 0, 'Chica': 0, 'Pares': 0, 'Juego': 0 };
 let apuestaEnAire = 0; 
+let apuestaDeje = 1;
 let miTurnoHablar = false;
 let pasesConsecutivos = 0;
 
@@ -60,9 +61,11 @@ function setupConnection() {
         setupScreen.classList.add('hidden');
         gameScreen.classList.remove('hidden');
         if(isHost) {
+            // El Host decide el 50/50 y se lo comunica al Guest
             soyMano = Math.random() > 0.5;
+            gameLog.innerText = "🎲 Realizando sorteo inicial de Mano/Postre...";
             conn.send({ type: 'init-game', hostEsMano: soyMano });
-            iniciarRonda();
+            setTimeout(iniciarRonda, 2000);
         }
     });
 
@@ -70,7 +73,8 @@ function setupConnection() {
         switch(data.type) {
             case 'init-game':
                 soyMano = !data.hostEsMano;
-                iniciarRonda();
+                gameLog.innerText = "🎲 Realizando sorteo inicial de Mano/Postre...";
+                setTimeout(iniciarRonda, 2000);
                 break;
             case 'request-deal':
                 realizarRepartoLocal(); 
@@ -79,24 +83,20 @@ function setupConnection() {
                 misCartas = data.cards;
                 evaluarInicioMano();
                 break;
-            
-            // --- Sincronización de descartes ---
-            case 'request-discard': // Invitado pide cartas
+            case 'request-discard': 
                 data.descartadas.forEach(c => descartes.push(c));
                 const nuevas = robarCartas(data.count);
                 conn.send({ type: 'give-discard-cards', cards: nuevas });
                 descartesListos++;
                 comprobarFinDescartes();
                 break;
-            case 'give-discard-cards': // Invitado recibe cartas
+            case 'give-discard-cards': 
                 data.cards.forEach(c => misCartas.push(c));
                 gameLog.innerText = "Esperando a que el Host termine de descartar...";
                 break;
-            case 'mus-ronda-lista': // El Host avisa de que ambos tienen cartas
+            case 'mus-ronda-lista': 
                 evaluarInicioMano();
                 break;
-            
-            // --- Pedrete asíncrono ---
             case 'request-pedrete':
                 data.descartadas.forEach(c => descartes.push(c));
                 conn.send({ type: 'give-pedrete', cards: robarCartas(4) });
@@ -109,8 +109,6 @@ function setupConnection() {
                 sumarPuntos('rival', 1);
                 gameLog.innerText = "¡El rival tenía Pedrete y se lleva 1 punto!";
                 break;
-
-            // --- Fases y Apuestas ---
             case 'mus-call':
                 faseJuego = 'mus';
                 gameLog.innerText = "La mano pide Mus. ¿Qué haces?";
@@ -119,10 +117,10 @@ function setupConnection() {
             case 'mus-accept':
                 iniciarDescarte();
                 break;
-            case 'no-mus': // El rival cortó el mus
+            case 'no-mus': 
                 iniciarFaseApuestas();
                 break;
-            case 'info-fases': // Recibimos si el rival tiene pares/juego
+            case 'info-fases': 
                 rivalEstadoPares = data.pares;
                 rivalEstadoJuego = data.juego;
                 if (faseJuego === 'apuestas') intentarPrepararRonda();
@@ -161,7 +159,6 @@ function barajar(array) {
     return array;
 }
 
-// NUEVO: Robar cartas soportando que se acabe la baraja
 function robarCartas(cantidad) {
     let robadas = [];
     for(let i=0; i<cantidad; i++) {
@@ -177,12 +174,23 @@ function robarCartas(cantidad) {
 
 function tienePares(cartas) {
     const counts = {};
-    for (let c of cartas) counts[c.valor] = (counts[c.valor] || 0) + 1;
+    for (let c of cartas) {
+        // Los 3 son Reyes (12) y los 2 son Ases (1)
+        let valorReal = c.valor === 3 ? 12 : (c.valor === 2 ? 1 : c.valor);
+        counts[valorReal] = (counts[valorReal] || 0) + 1;
+    }
     return Object.values(counts).some(v => v >= 2);
 }
 
 function tieneJuego(cartas) {
-    let suma = cartas.reduce((acc, c) => acc + (c.valor >= 10 ? 10 : c.valor), 0);
+    let suma = cartas.reduce((acc, c) => {
+        // Figuras y el 3 (que es un Rey) valen 10
+        if (c.valor === 3 || c.valor >= 10) return acc + 10;
+        // Los Pitos (As y 2) valen 1
+        if (c.valor === 2 || c.valor === 1) return acc + 1;
+        // El resto (4, 5, 6, 7) valen su valor
+        return acc + c.valor;
+    }, 0);
     return suma >= 31;
 }
 
@@ -201,7 +209,7 @@ document.getElementById('btn-deal').addEventListener('click', () => {
 });
 
 function realizarRepartoLocal() {
-    descartes = []; // Limpiamos descartes al inicio de la mano
+    descartes = []; 
     baraja = barajar(crearBaraja());
     misCartas = robarCartas(4);
     conn.send({ type: 'deal', cards: robarCartas(4) });
@@ -211,8 +219,9 @@ function realizarRepartoLocal() {
 function evaluarInicioMano() {
     mostrarMisCartas();
     cartasSeleccionadas = [];
+    rivalEstadoPares = null;
+    rivalEstadoJuego = null;
     
-    // Comprobar Pedrete
     const valoresStr = misCartas.map(c => c.valor).sort((a,b)=>a-b).join(',');
     if (valoresStr === '4,5,6,7') {
         mostrarBotones(['btn-pedrete']);
@@ -261,8 +270,8 @@ document.getElementById('btn-mus').addEventListener('click', () => {
 
 document.getElementById('btn-nomus').addEventListener('click', () => {
     mostrarBotones([]);
-    iniciarFaseApuestas(); // Arrancamos la apuesta localmente
     conn.send({ type: 'no-mus' }); 
+    iniciarFaseApuestas();
 });
 
 function iniciarDescarte() {
@@ -284,7 +293,7 @@ document.getElementById('btn-descartar').addEventListener('click', () => {
         cartasTiradasObj.forEach(c => descartes.push(c));
         const nuevas = robarCartas(cant);
         nuevas.forEach(c => misCartas.push(c));
-        gameLog.innerText = "Esperando a que el Postre se descarte...";
+        gameLog.innerText = "Esperando a que el Invitado se descarte...";
         descartesListos++;
         comprobarFinDescartes();
     } else {
@@ -303,10 +312,11 @@ function comprobarFinDescartes() {
 // --- MOTOR DE APUESTAS ---
 
 function iniciarFaseApuestas() {
-    mostrarBotones([]); // Oculta mus, nomus, etc. (Soluciona el Punto 1)
+    mostrarBotones([]); 
     faseJuego = 'apuestas';
     indiceFaseActual = 0;
     botes = { 'Grande': 0, 'Chica': 0, 'Pares': 0, 'Juego': 0 };
+    apuestaEnAire = 0;
     
     const logDiv = document.getElementById('betting-log');
     logDiv.innerHTML = `
@@ -314,21 +324,31 @@ function iniciarFaseApuestas() {
         <p id="log-Chica">Chica: 0</p>
         <p id="log-Pares">Pares: 0</p>
         <p id="log-Juego">Juego: 0</p>
+        <div id="caja-en-aire" class="hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #88c0d0;">
+            <p class="highlight" style="font-size: 1.2em;">En el aire: <span id="log-en-aire">0</span></p>
+        </div>
     `;
     logDiv.classList.remove('hidden');
 
     miEstadoPares = tienePares(misCartas);
     miEstadoJuego = tieneJuego(misCartas);
-    rivalEstadoPares = null;
-    rivalEstadoJuego = null;
 
     conn.send({ type: 'info-fases', pares: miEstadoPares, juego: miEstadoJuego });
     intentarPrepararRonda();
 }
 
 function intentarPrepararRonda() {
-    // Esperamos a tener la información del rival para proceder
     if (rivalEstadoPares !== null) prepararRondaApuesta();
+}
+
+function actualizarCajaAire() {
+    const caja = document.getElementById('caja-en-aire');
+    if (apuestaEnAire > 0 || apuestaEnAire === 'ÓRDAGO') {
+        caja.classList.remove('hidden');
+        document.getElementById('log-en-aire').innerText = apuestaEnAire;
+    } else {
+        caja.classList.add('hidden');
+    }
 }
 
 function prepararRondaApuesta() {
@@ -340,9 +360,10 @@ function prepararRondaApuesta() {
     const nombreFase = fasesApuesta[indiceFaseActual];
     apuestaEnAire = 0;
     pasesConsecutivos = 0;
+    apuestaDeje = 1;
     miTurnoHablar = soyMano;
+    actualizarCajaAire(); // Reseteamos la caja de aire visualmente
 
-    // Lógica de salto para Pares y Juego (Soluciona el Punto 6)
     if (nombreFase === 'Pares') {
         if (!miEstadoPares && !rivalEstadoPares) {
             gameLog.innerText = "Nadie tiene Pares.";
@@ -374,7 +395,7 @@ function actualizarInterfazApuestas() {
     document.getElementById('mi-turno').classList.toggle('hidden', !miTurnoHablar);
     document.getElementById('turno-rival').classList.toggle('hidden', miTurnoHablar);
     
-    mostrarBotones([]); // Oculta base
+    mostrarBotones([]); 
     document.getElementById('action-buttons').classList.remove('hidden');
     document.getElementById('apuesta-iniciar').classList.add('hidden');
     document.getElementById('apuesta-responder').classList.add('hidden');
@@ -389,7 +410,7 @@ function actualizarInterfazApuestas() {
             document.getElementById('in-subir').value = 2;
         }
     } else {
-        gameLog.innerText = `El rival está pensando...`;
+        gameLog.innerText = `[Fase de ${nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego ? 'Punto' : nombreFase}] - El rival está pensando...`;
     }
 }
 
@@ -408,8 +429,17 @@ function finDeRondas() {
     document.getElementById('mi-turno').classList.add('hidden');
     document.getElementById('turno-rival').classList.add('hidden');
     mostrarBotones([]);
-    gameLog.innerText = "Fase de apuestas terminada. (Pendiente: Lógica de recuento de puntos)";
+    
+    gameLog.innerText = "¡Fase de apuestas terminada! (Próximamente: recuento de puntos). Rotando roles...";
+    
+    // Rotamos los roles para poder seguir jugando
+    setTimeout(() => {
+        soyMano = !soyMano;
+        iniciarRonda();
+    }, 4000);
 }
+
+// --- ACCIONES DE APUESTA ---
 
 // --- ACCIONES DE APUESTA ---
 
@@ -423,24 +453,26 @@ function realizarAccion(accion, cantidad = 0) {
     if (accion === 'pasar') {
         pasesConsecutivos++;
         gameLog.innerText = `Has pasado.`;
-        if (pasesConsecutivos === 2) avanzarSiguienteFase(1); // Punto en el aire por pase corrido
+        if (pasesConsecutivos === 2) avanzarSiguienteFase(1); 
     } 
     else if (accion === 'nover') {
-        // Soluciona el Punto 5: Deje automático
-        let puntosGanados = botes[nombreFase] === 0 ? 1 : botes[nombreFase];
-        sumarPuntos('rival', puntosGanados);
-        gameLog.innerText = `No has visto. El rival se lleva ${puntosGanados} punto(s).`;
-        avanzarSiguienteFase(0); // Bote a 0 porque ya se cobró
+        // El rival cobra el deje exacto de la apuesta anterior
+        sumarPuntos('rival', apuestaDeje);
+        gameLog.innerText = `Te has achantado. El rival se lleva ${apuestaDeje} punto(s) de deje.`;
+        avanzarSiguienteFase(0); 
     }
     else if (accion === 'envidar') {
         pasesConsecutivos = 0;
+        apuestaDeje = 1;
         apuestaEnAire = cantidad;
+        actualizarCajaAire();
         gameLog.innerText = `Has apostado ${cantidad}.`;
     }
     else if (accion === 'subir') {
         pasesConsecutivos = 0;
-        botes[nombreFase] += apuestaEnAire; // Consolidamos la apuesta anterior
-        apuestaEnAire = cantidad; // Ponemos la nueva en el aire
+        apuestaDeje = apuestaEnAire; // El nuevo deje es lo que había en el aire antes de tu subida
+        apuestaEnAire += cantidad;   // El aire total suma la nueva cantidad
+        actualizarCajaAire();
         gameLog.innerText = `Has subido ${cantidad}.`;
     }
     else if (accion === 'ver') {
@@ -449,6 +481,9 @@ function realizarAccion(accion, cantidad = 0) {
         avanzarSiguienteFase(0);
     }
     else if (accion === 'ordago') {
+        apuestaDeje = apuestaEnAire === 0 ? 1 : apuestaEnAire;
+        apuestaEnAire = 'ÓRDAGO';
+        actualizarCajaAire();
         gameLog.innerText = `¡HAS LANZADO UN ÓRDAGO!`;
     }
 }
@@ -468,22 +503,25 @@ function procesarAccionRival(accion, cantidad) {
         }
     }
     else if (accion === 'nover') {
-        let puntosGanados = botes[nombreFase] === 0 ? 1 : botes[nombreFase];
-        sumarPuntos('yo', puntosGanados);
-        gameLog.innerText = `El rival NO HA VISTO. Te llevas ${puntosGanados} punto(s).`;
+        // Tú cobras el deje
+        sumarPuntos('yo', apuestaDeje);
+        gameLog.innerText = `¡El rival no ha querido ver! Te llevas ${apuestaDeje} punto(s) de deje.`;
         avanzarSiguienteFase(0);
     }
     else if (accion === 'envidar') {
         pasesConsecutivos = 0;
+        apuestaDeje = 1;
         apuestaEnAire = cantidad;
+        actualizarCajaAire();
         gameLog.innerText = `El rival ha apostado ${cantidad}. ¿Qué haces?`;
         miTurnoHablar = true;
         actualizarInterfazApuestas();
     }
     else if (accion === 'subir') {
         pasesConsecutivos = 0;
-        botes[nombreFase] += apuestaEnAire; 
-        apuestaEnAire = cantidad;
+        apuestaDeje = apuestaEnAire;
+        apuestaEnAire += cantidad;
+        actualizarCajaAire();
         gameLog.innerText = `El rival ha subido ${cantidad}. ¿Qué haces?`;
         miTurnoHablar = true;
         actualizarInterfazApuestas();
@@ -494,7 +532,9 @@ function procesarAccionRival(accion, cantidad) {
         avanzarSiguienteFase(0);
     }
     else if (accion === 'ordago') {
+        apuestaDeje = apuestaEnAire === 0 ? 1 : apuestaEnAire;
         apuestaEnAire = 'ÓRDAGO';
+        actualizarCajaAire();
         gameLog.innerText = `¡EL RIVAL HA LANZADO UN ÓRDAGO!`;
         miTurnoHablar = true;
         actualizarInterfazApuestas();
@@ -545,16 +585,12 @@ function alternarCarta(index, div) {
 function mostrarBotones(ids) {
     const contenedor = document.getElementById('action-buttons');
     const allIds = ['btn-deal', 'btn-pedrete', 'btn-mus', 'btn-nomus', 'btn-descartar'];
-    
-    // Ocultar todos los botones básicos
     allIds.forEach(id => document.getElementById(id).classList.add('hidden'));
     
     if (ids.length > 0) {
-        // Si hay algún botón que mostrar, hacemos visible la caja padre y el botón
         contenedor.classList.remove('hidden');
         ids.forEach(id => document.getElementById(id).classList.remove('hidden'));
     } else {
-        // Si no hay botones básicos que mostrar (como cuando le pasamos un array vacío []), ocultamos la caja entera
         contenedor.classList.add('hidden');
     }
 }
