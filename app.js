@@ -719,19 +719,40 @@ function compararCartas(mis, sus, isGrande) {
 function getParesInfo(cartas) {
     let counts = {};
     getValoresMus(cartas).forEach(v => counts[v] = (counts[v] || 0) + 1);
-    let pares = Object.entries(counts).filter(e => e[1] >= 2).sort((a,b) => b[0] - a[0]);
     
-    if(pares.length === 0) return { tipo: 0, premio: 0 };
-    if(pares.length === 1 && pares[0][1] === 2) return { tipo: 1, v1: parseInt(pares[0][0]), premio: 1 }; // Par
-    if(pares.length === 1 && pares[0][1] === 3) return { tipo: 2, v1: parseInt(pares[0][0]), premio: 2 }; // Trío
-    if(pares.length === 1 && pares[0][1] === 4) return { tipo: 3, v1: parseInt(pares[0][0]), v2: parseInt(pares[0][0]), premio: 3 }; // Duplex 4 iguales
-    return { tipo: 3, v1: Math.max(pares[0][0], pares[1][0]), v2: Math.min(pares[0][0], pares[1][0]), premio: 3 }; // Duplex 2 pares
+    // Mapeamos explícitamente a números enteros para evitar fallos de strings
+    let pares = Object.entries(counts)
+        .map(e => [parseInt(e[0]), e[1]])
+        .filter(e => e[1] >= 2);
+    
+    if (pares.length === 0) return { tipo: 0, premio: 0 };
+    
+    // Si solo hay un grupo de cartas repetidas (Par, Trío o Dúplex de 4 cartas idénticas)
+    if (pares.length === 1) {
+        if (pares[0][1] === 2) return { tipo: 1, v1: pares[0][0], premio: 1 }; // Par
+        if (pares[0][1] === 3) return { tipo: 2, v1: pares[0][0], premio: 2 }; // Trío
+        if (pares[0][1] === 4) return { tipo: 3, v1: pares[0][0], v2: pares[0][0], premio: 3 }; // Dúplex (4 cartas iguales)
+    }
+    
+    // Si hay dos grupos (Dúplex de dos parejas distintas)
+    if (pares.length === 2) {
+        let mayor = Math.max(pares[0][0], pares[1][0]);
+        let menor = Math.min(pares[0][0], pares[1][0]);
+        return { tipo: 3, v1: mayor, v2: menor, premio: 3 };
+    }
 }
 
 function compParesInfo(mi, su) {
-    if(mi.tipo > su.tipo) return 'yo'; if(mi.tipo < su.tipo) return 'rival';
-    if(mi.v1 > su.v1) return 'yo'; if(mi.v1 < su.v1) return 'rival';
-    if(mi.v2 && su.v2) { if(mi.v2 > su.v2) return 'yo'; if(mi.v2 < su.v2) return 'rival'; }
+    // 1. Quien tenga mejor tipo de jugada (Dúplex > Trío > Par) gana automáticamente
+    if (mi.tipo !== su.tipo) return mi.tipo > su.tipo ? 'yo' : 'rival';
+    
+    // 2. Si tienen el mismo tipo, se compara la carta más alta que forma la jugada
+    if (mi.v1 !== su.v1) return mi.v1 > su.v1 ? 'yo' : 'rival';
+    
+    // 3. Si siguen empatados (solo pasa en Dúplex), se compara la segunda pareja
+    if (mi.v2 && su.v2 && mi.v2 !== su.v2) return mi.v2 > su.v2 ? 'yo' : 'rival';
+    
+    // 4. Si tienen exactamente las mismas cartas, gana la Mano
     return soyMano ? 'yo' : 'rival';
 }
 
@@ -740,11 +761,30 @@ function getSumaJuego(cartas) {
 }
 
 const jRank = {31:8, 32:7, 40:6, 37:5, 36:4, 35:3, 34:2, 33:1};
-function compJuego(miS, suS) { 
+
+function esLaReal(cartas) {
+    let numSietes = cartas.filter(c => c.valor === 7).length;
+    let numSotas = cartas.filter(c => c.valor === 10).length;
+    return numSietes === 3 && numSotas === 1;
+}
+
+function compJuego(mis, sus) { 
+    let miS = getSumaJuego(mis);
+    let suS = getSumaJuego(sus);
+    
+    let yoTengoReal = esLaReal(mis);
+    let rivalTieneReal = esLaReal(sus);
+
+    // La Real gana a cualquier otro juego automáticamente
+    if (yoTengoReal && !rivalTieneReal) return 'yo';
+    if (!yoTengoReal && rivalTieneReal) return 'rival';
+    // (Si ambos tuvieran la real, que es imposible con una baraja, ganaría la mano de todos modos)
+
     if(jRank[miS] > jRank[suS]) return 'yo'; 
     if(jRank[miS] < jRank[suS]) return 'rival'; 
     return soyMano ? 'yo' : 'rival'; 
 }
+
 
 function compPunto(miS, suS) { 
     if(miS > suS) return 'yo'; 
@@ -791,7 +831,7 @@ async function iniciarRecuento() {
             if (!ganador) {
                 if (miEstadoPares && !rivalEstadoPares) ganador = 'yo';
                 else if (!miEstadoPares && rivalEstadoPares) ganador = 'rival';
-                else ganador = compParesInfo(getParesInfo(misCartas), getParesInfo(cartasRivalTemp));
+                else ganador = compJuego(misCartas, cartasRivalTemp);
             }
             ptsBonus = ganador === 'yo' ? getParesInfo(misCartas).premio : getParesInfo(cartasRivalTemp).premio;
         }
