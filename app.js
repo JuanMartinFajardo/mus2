@@ -106,6 +106,97 @@ document.getElementById('btn-join').addEventListener('click', () => {
 });
 
 
+function configurarRecepcionDatos() {
+    // Evitamos duplicar listeners de datos si la conexión hace reconexiones
+    conn.off('data'); 
+    conn.on('data', (data) => {
+        switch(data.type) {
+            case 'init-game':
+                soyMano = !data.hostEsMano;
+                gameLog.innerText = "🎲 Realizando sorteo inicial de Mano/Postre...";
+                setTimeout(iniciarRonda, 2000);
+                break;
+            case 'request-deal':
+                realizarRepartoLocal(); 
+                break;
+            case 'deal':
+                misCartas = data.cards;
+                evaluarInicioMano();
+                break;
+            case 'request-discard': 
+                cartasDescartadasRival = data.count;
+                data.descartadas.forEach(c => descartes.push(c));
+                const nuevas = robarCartas(data.count);
+                conn.send({ type: 'give-discard-cards', cards: nuevas });
+                descartesListos++;
+                comprobarFinDescartes();
+                break;
+            case 'info-descarte':
+                cartasDescartadasRival = data.count;
+                break;
+            case 'give-discard-cards': 
+                data.cards.forEach(c => misCartas.push(c));
+                gameLog.innerText = "Esperando a que el Host termine de descartar...";
+                break;
+            case 'mus-ronda-lista': 
+                evaluarInicioMano();
+                break;
+            case 'request-pedrete':
+                data.descartadas.forEach(c => descartes.push(c));
+                conn.send({ type: 'give-pedrete', cards: robarCartas(4) });
+                break;
+            case 'give-pedrete':
+                misCartas = data.cards;
+                evaluarInicioMano();
+                break;
+            case 'pedrete-claim':
+                sumarPuntos('rival', 1);
+                gameLog.innerText = "¡El rival tenía Pedrete y se lleva 1 punto!";
+                break;
+            case 'mus-call':
+                faseJuego = 'mus';
+                gameLog.innerText = "La mano pide Mus. ¿Qué haces?";
+                mostrarBotones(['btn-mus', 'btn-nomus']);
+                break;
+            case 'mus-accept':
+                iniciarDescarte();
+                break;
+            case 'no-mus': 
+                iniciarFaseApuestas();
+                break;
+            case 'info-fases': 
+                rivalEstadoPares = data.pares;
+                rivalEstadoJuego = data.juego;
+                if (faseJuego === 'apuestas') intentarPrepararRonda();
+                break;
+            case 'apuesta-accion':
+                procesarAccionRival(data.accion, data.cantidad);
+                break;
+            case 'showdown':
+                cartasRivalTemp = data.cards;
+                if (faseJuego === 'recuento') iniciarRecuento();
+                break;
+            case 'ready-next':
+                listosParaSiguiente++;
+                comprobarSiguienteRonda();
+                break;
+        }
+    });
+}
+
+// --- COMUNICACIÓN POR RED ---
+function iniciarPantallaJuego() {
+    setupScreen.classList.add('hidden');
+    gameScreen.classList.remove('hidden');
+    if(isHost) {
+        soyMano = Math.random() > 0.5;
+        gameLog.innerText = "🎲 Realizando sorteo inicial de Mano/Postre...";
+        conn.send({ type: 'init-game', hostEsMano: soyMano });
+        setTimeout(iniciarRonda, 2000);
+    }
+}
+
+
 // --- COMUNICACIÓN POR RED ---
 function setupConnection() {
     conn.on('open', () => {
