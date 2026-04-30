@@ -41,10 +41,24 @@ const statusMsg = document.getElementById('status-msg');
 const gameLog = document.getElementById('game-log');
 
 // --- SETUP DE CONEXIÓN PEERJS ---
+
+// Configuramos los faros STUN de Google para ayudar a traspasar Firewalls y 4G
+const peerConfig = {
+    config: {
+        'iceServers': [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' }
+        ]
+    }
+};
+
+
 document.getElementById('btn-create').addEventListener('click', () => {
     isHost = true;
     const randomId = 'MUS-' + Math.floor(Math.random() * 10000);
-    peer = new Peer(randomId);
+    peer = new Peer(randomId, peerConfig);
     peer.on('open', (id) => {
         document.getElementById('my-id').innerText = id;
         statusMsg.innerText = "Esperando a que se conecte tu amigo...";
@@ -57,7 +71,7 @@ document.getElementById('btn-join').addEventListener('click', () => {
     const hostId = document.getElementById('join-id').value.trim().toUpperCase();
     if (!hostId) return;
     
-    peer = new Peer();
+    peer = new Peer(peerConfig);
     peer.on('error', (err) => { statusMsg.innerText = "❌ Error: " + err.type; });
     peer.on('open', () => {
         statusMsg.innerText = "Conectando...";
