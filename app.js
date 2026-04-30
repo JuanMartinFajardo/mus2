@@ -45,12 +45,13 @@ const gameLog = document.getElementById('game-log');
 
 
 const peerConfig = {
-    debug: 3, // Nivel máximo para ver qué bloquea exactamente en tu consola
-    pingInterval: 5000, // Fuerza pings para evitar que Chrome cierre el túnel
+    secure: true,
+    host: '0.peerjs.com',
+    port: 443,
     config: {
         'iceServers': [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' } // STUN ultrarrobusto
+            { urls: 'stun:stun1.l.google.com:19302' }
         ]
     }
 };
