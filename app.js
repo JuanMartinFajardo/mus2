@@ -44,15 +44,13 @@ const gameLog = document.getElementById('game-log');
 
 
 
-// Forzamos la conexión segura para que GitHub Pages y los móviles no lo bloqueen
 const peerConfig = {
-    secure: true,
-    host: '0.peerjs.com',
-    port: 443,
     config: {
         'iceServers': [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' }
         ]
     }
 };
@@ -62,32 +60,42 @@ document.getElementById('btn-create').addEventListener('click', () => {
     isHost = true;
     const randomId = 'MUS-' + Math.floor(Math.random() * 10000);
     peer = new Peer(randomId, peerConfig);
+    
     peer.on('open', (id) => {
         document.getElementById('my-id').innerText = id;
-        statusMsg.innerText = "Esperando a que se conecte tu rival...";
+        statusMsg.innerText = "Esperando a que se conecte tu amigo...";
     });
-    peer.on('connection', (connection) => { conn = connection; setupConnection(); });
+    
+    peer.on('connection', (connection) => { 
+        conn = connection; 
+        statusMsg.innerText = "¡Rival encontrado! Estableciendo conexión...";
+        setupConnection(); 
+    });
+    
     peer.on('error', (err) => { statusMsg.innerText = "❌ Error: " + err.type; });
 });
+
 
 document.getElementById('btn-join').addEventListener('click', () => {
     isHost = false;
-    const hostId = document.getElementById('join-id').value.trim().toUpperCase();
+    let hostId = document.getElementById('join-id').value.trim().toUpperCase();
     if (!hostId) return;
     
-    // Protección anti-despistes: Si el invitado solo pone "1234", le añadimos "MUS-"
     if (!hostId.startsWith('MUS-')) {
         hostId = 'MUS-' + hostId;
     }
-
+    
     peer = new Peer(peerConfig);
+    
     peer.on('error', (err) => { statusMsg.innerText = "❌ Error: " + err.type; });
     peer.on('open', () => {
-        statusMsg.innerText = "Conectando...";
-        conn = peer.connect(hostId);
+        statusMsg.innerText = `Buscando a ${hostId}...`;
+        // reliable: true fuerza un canal estable y libre de cortes
+        conn = peer.connect(hostId, { reliable: true });
         setupConnection();
     });
 });
+
 
 // --- COMUNICACIÓN POR RED ---
 function setupConnection() {
@@ -102,6 +110,12 @@ function setupConnection() {
             setTimeout(iniciarRonda, 2000);
         }
     });
+
+    if (conn.open) {
+            iniciarPantallaJuego();
+        } else {
+            conn.on('open', iniciarPantallaJuego);
+        }
 
     conn.on('data', (data) => {
         switch(data.type) {
