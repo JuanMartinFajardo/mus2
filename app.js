@@ -45,6 +45,7 @@ const gameLog = document.getElementById('game-log');
 
 
 const peerConfig = {
+    debug: 2,
     config: {
         'iceServers': [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -91,7 +92,7 @@ document.getElementById('btn-join').addEventListener('click', () => {
     peer.on('open', () => {
         statusMsg.innerText = `Buscando a ${hostId}...`;
         // reliable: true fuerza un canal estable y libre de cortes
-        conn = peer.connect(hostId, { reliable: true });
+        conn = peer.connect(hostId);
         setupConnection();
     });
 });
