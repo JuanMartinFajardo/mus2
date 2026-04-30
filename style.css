@@ -157,3 +157,15 @@ input[type="number"] {
     font-weight: bold;
     font-size: 1.1em;
 }
+
+/* Marca de agua del creador */
+.watermark {
+    position: fixed;
+    bottom: 10px;
+    right: 15px;
+    color: rgba(255, 255, 255, 0.2); /* Blanco muy transparente */
+    font-size: 14px;
+    font-weight: bold;
+    pointer-events: none; /* Permite hacer clics a través del texto por si pisa un botón */
+    z-index: 9999;
+}
