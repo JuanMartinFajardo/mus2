@@ -16,8 +16,9 @@ let descartesListos = 0;
 const fasesApuesta = ['Grande', 'Chica', 'Pares', 'Juego'];
 let indiceFaseActual = 0;
 let botes = { 'Grande': 0, 'Chica': 0, 'Pares': 0, 'Juego': 0 };
-let apuestaEnAire = 0; 
-let apuestaDeje = 1;
+let apuestaVista = 0;
+let subidaPendiente = 0; 
+let quienSube = null; // Puede ser 'yo' o 'rival'
 let miTurnoHablar = false;
 let pasesConsecutivos = 0;
 
@@ -325,7 +326,8 @@ function iniciarFaseApuestas() {
         <p id="log-Pares">Pares: 0</p>
         <p id="log-Juego">Juego: 0</p>
         <div id="caja-en-aire" class="hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #88c0d0;">
-            <p class="highlight" style="font-size: 1.2em;">En el aire: <span id="log-en-aire">0</span></p>
+            <p style="font-size: 1.1em; margin-bottom: 5px;">Apuesta vista: <span id="log-apuesta-vista" class="highlight">0</span></p>
+            <p id="texto-subida" style="font-size: 1.2em; font-weight: bold; color: #ebcb8b; margin: 0;"></p>
         </div>
     `;
     logDiv.classList.remove('hidden');
@@ -343,9 +345,19 @@ function intentarPrepararRonda() {
 
 function actualizarCajaAire() {
     const caja = document.getElementById('caja-en-aire');
-    if (apuestaEnAire > 0 || apuestaEnAire === 'ÓRDAGO') {
+    if (subidaPendiente > 0 || subidaPendiente === 'ÓRDAGO') {
         caja.classList.remove('hidden');
-        document.getElementById('log-en-aire').innerText = apuestaEnAire;
+        document.getElementById('log-apuesta-vista').innerText = apuestaVista;
+        
+        const textoSubida = document.getElementById('texto-subida');
+        const cantidadStr = subidaPendiente === 'ÓRDAGO' ? 'un ÓRDAGO' : subidaPendiente;
+        
+        if (quienSube === 'yo') {
+            textoSubida.innerText = `Has subido: ${cantidadStr}`;
+        } else {
+            textoSubida.innerText = `Te suben: ${cantidadStr}`;
+            textoSubida.style.color = "#bf616a"; // Rojo para alertar de que te han subido
+        }
     } else {
         caja.classList.add('hidden');
     }
@@ -358,10 +370,12 @@ function prepararRondaApuesta() {
     }
 
     const nombreFase = fasesApuesta[indiceFaseActual];
-    apuestaEnAire = 0;
+    apuestaVista = 0;
+    subidaPendiente = 0;
+    quienSube = null;
     pasesConsecutivos = 0;
-    apuestaDeje = 1;
     miTurnoHablar = soyMano;
+    actualizarCajaAire();
     actualizarCajaAire(); // Reseteamos la caja de aire visualmente
 
     if (nombreFase === 'Pares') {
@@ -402,15 +416,19 @@ function actualizarInterfazApuestas() {
 
     if (miTurnoHablar) {
         gameLog.innerText = `[Fase de ${nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego ? 'Punto' : nombreFase}] - Te toca decidir.`;
-        if (apuestaEnAire === 0) {
+        
+        // AQUÍ ESTABA EL ERROR: Ahora comprueba si hay una subida pendiente real
+        if (subidaPendiente === 0) {
+            // Si no hay apuestas previas, puedes Envidar o Pasar
             document.getElementById('apuesta-iniciar').classList.remove('hidden');
             document.getElementById('in-envidar').value = 2;
         } else {
+            // Si ya te han envidado, solo puedes Ver, Subir o No ver
             document.getElementById('apuesta-responder').classList.remove('hidden');
             document.getElementById('in-subir').value = 2;
         }
     } else {
-        gameLog.innerText = `[Fase de ${nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego ? 'Punto' : nombreFase}] - El rival está pensando...`;
+        gameLog.innerText = `El rival está pensando...`;
     }
 }
 
@@ -451,38 +469,45 @@ function realizarAccion(accion, cantidad = 0) {
     const nombreFase = fasesApuesta[indiceFaseActual];
 
     if (accion === 'pasar') {
-        pasesConsecutivos++;
-        gameLog.innerText = `Has pasado.`;
-        if (pasesConsecutivos === 2) avanzarSiguienteFase(1); 
-    } 
+            pasesConsecutivos++;
+            gameLog.innerText = `Has pasado.`;
+            if (pasesConsecutivos === 2) {
+                // Solo hay punto de pase corrido en Grande, Chica y Punto
+                let puntoPase = (nombreFase === 'Grande' || nombreFase === 'Chica' || (nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego)) ? 1 : 0;
+                avanzarSiguienteFase(puntoPase); 
+            }
+        }
     else if (accion === 'nover') {
-        // El rival cobra el deje exacto de la apuesta anterior
-        sumarPuntos('rival', apuestaDeje);
-        gameLog.innerText = `Te has achantado. El rival se lleva ${apuestaDeje} punto(s) de deje.`;
+        let deje = apuestaVista > 0 ? apuestaVista : 1;
+        sumarPuntos('rival', deje);
+        gameLog.innerText = `Te has achantado. El rival se lleva ${deje} punto(s) de deje.`;
         avanzarSiguienteFase(0); 
     }
     else if (accion === 'envidar') {
         pasesConsecutivos = 0;
-        apuestaDeje = 1;
-        apuestaEnAire = cantidad;
+        apuestaVista = 0;
+        subidaPendiente = cantidad;
+        quienSube = 'yo';
         actualizarCajaAire();
-        gameLog.innerText = `Has apostado ${cantidad}.`;
+        gameLog.innerText = `Has envidado ${cantidad}.`;
     }
     else if (accion === 'subir') {
         pasesConsecutivos = 0;
-        apuestaDeje = apuestaEnAire; // El nuevo deje es lo que había en el aire antes de tu subida
-        apuestaEnAire += cantidad;   // El aire total suma la nueva cantidad
+        apuestaVista += subidaPendiente; 
+        subidaPendiente = cantidad;
+        quienSube = 'yo';
         actualizarCajaAire();
         gameLog.innerText = `Has subido ${cantidad}.`;
     }
     else if (accion === 'ver') {
         gameLog.innerText = `Has visto la apuesta.`;
-        botes[nombreFase] += apuestaEnAire;
+        botes[nombreFase] += (apuestaVista + subidaPendiente);
         avanzarSiguienteFase(0);
     }
     else if (accion === 'ordago') {
-        apuestaDeje = apuestaEnAire === 0 ? 1 : apuestaEnAire;
-        apuestaEnAire = 'ÓRDAGO';
+        apuestaVista += (subidaPendiente > 0 ? subidaPendiente : 0);
+        subidaPendiente = 'ÓRDAGO';
+        quienSube = 'yo';
         actualizarCajaAire();
         gameLog.innerText = `¡HAS LANZADO UN ÓRDAGO!`;
     }
@@ -492,48 +517,52 @@ function procesarAccionRival(accion, cantidad) {
     const nombreFase = fasesApuesta[indiceFaseActual];
 
     if (accion === 'pasar') {
-        pasesConsecutivos++;
-        if (pasesConsecutivos === 2) {
-            gameLog.innerText = `El rival ha pasado. (Pase corrido)`;
-            avanzarSiguienteFase(1);
-        } else {
-            gameLog.innerText = `El rival ha pasado. ¡Te toca hablar!`;
-            miTurnoHablar = true;
-            actualizarInterfazApuestas();
+            pasesConsecutivos++;
+            if (pasesConsecutivos === 2) {
+                let puntoPase = (nombreFase === 'Grande' || nombreFase === 'Chica' || (nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego)) ? 1 : 0;
+                gameLog.innerText = `El rival ha pasado. (Pase corrido)`;
+                avanzarSiguienteFase(puntoPase);
+            } else {
+                gameLog.innerText = `El rival ha pasado. ¡Te toca hablar!`;
+                miTurnoHablar = true;
+                actualizarInterfazApuestas();
+            }
         }
-    }
     else if (accion === 'nover') {
-        // Tú cobras el deje
-        sumarPuntos('yo', apuestaDeje);
-        gameLog.innerText = `¡El rival no ha querido ver! Te llevas ${apuestaDeje} punto(s) de deje.`;
+        let deje = apuestaVista > 0 ? apuestaVista : 1;
+        sumarPuntos('yo', deje);
+        gameLog.innerText = `¡El rival no ha querido ver! Te llevas ${deje} punto(s) de deje.`;
         avanzarSiguienteFase(0);
     }
     else if (accion === 'envidar') {
         pasesConsecutivos = 0;
-        apuestaDeje = 1;
-        apuestaEnAire = cantidad;
+        apuestaVista = 0;
+        subidaPendiente = cantidad;
+        quienSube = 'rival';
         actualizarCajaAire();
-        gameLog.innerText = `El rival ha apostado ${cantidad}. ¿Qué haces?`;
+        gameLog.innerText = `El rival ha envidado ${cantidad}. ¿Qué haces?`;
         miTurnoHablar = true;
         actualizarInterfazApuestas();
     }
     else if (accion === 'subir') {
         pasesConsecutivos = 0;
-        apuestaDeje = apuestaEnAire;
-        apuestaEnAire += cantidad;
+        apuestaVista += subidaPendiente;
+        subidaPendiente = cantidad;
+        quienSube = 'rival';
         actualizarCajaAire();
-        gameLog.innerText = `El rival ha subido ${cantidad}. ¿Qué haces?`;
+        gameLog.innerText = `El rival te sube ${cantidad}. ¿Qué haces?`;
         miTurnoHablar = true;
         actualizarInterfazApuestas();
     }
     else if (accion === 'ver') {
         gameLog.innerText = `El rival HA VISTO. Apuesta cerrada.`;
-        botes[nombreFase] += apuestaEnAire;
+        botes[nombreFase] += (apuestaVista + subidaPendiente);
         avanzarSiguienteFase(0);
     }
     else if (accion === 'ordago') {
-        apuestaDeje = apuestaEnAire === 0 ? 1 : apuestaEnAire;
-        apuestaEnAire = 'ÓRDAGO';
+        apuestaVista += (subidaPendiente > 0 ? subidaPendiente : 0);
+        subidaPendiente = 'ÓRDAGO';
+        quienSube = 'rival';
         actualizarCajaAire();
         gameLog.innerText = `¡EL RIVAL HA LANZADO UN ÓRDAGO!`;
         miTurnoHablar = true;
