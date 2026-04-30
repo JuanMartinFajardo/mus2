@@ -147,6 +147,10 @@ function setupConnection() {
                 cartasRivalTemp = data.cards;
                 if (faseJuego === 'recuento') iniciarRecuento();
                 break;
+            case 'ready-next':
+                listosParaSiguiente++;
+                comprobarSiguienteRonda();
+                break;
         }
     });
 }
@@ -825,7 +829,9 @@ async function iniciarRecuento() {
     if (auto_replay_round) {
         gameLog.innerHTML += "<br><br><em>Preparando siguiente mano...</em>";
         await delay(3000);
-        limpiarYAvanzarRonda();
+        listosParaSiguiente++;
+        conn.send({ type: 'ready-next' });
+        comprobarSiguienteRonda();
     } else {
         gameLog.innerHTML += "<br><br><em>Ronda terminada. Comprueba los puntos.</em>";
         mostrarBotones(['btn-next-round']); 
@@ -833,14 +839,41 @@ async function iniciarRecuento() {
 }
 
 
-function limpiarYAvanzarRonda() {
-    document.querySelector('#opponent-area .cards-placeholder').innerHTML = '[Cartas del rival ocultas]';
-    soyMano = !soyMano; 
-    cartasRivalTemp = null; 
-    iniciarRonda();
+function comprobarSiguienteRonda() {
+    // Solo avanzamos cuando LOS DOS jugadores han dado al botón o terminado el auto-replay
+    if (listosParaSiguiente === 2) {
+        listosParaSiguiente = 0;
+        
+        // 1. Limpiamos TODAS las variables de la ronda (menos los puntos totales)
+        botes = { 'Grande': 0, 'Chica': 0, 'Pares': 0, 'Juego': 0 };
+        ganadoresFase = { 'Grande': null, 'Chica': null, 'Pares': null, 'Juego': null };
+        apuestaVista = 0;
+        subidaPendiente = 0;
+        quienSube = null;
+        faseOrdagoAceptado = null;
+        misCartas = [];
+        cartasRivalTemp = null;
+        
+        // 2. Limpieza visual completa
+        document.querySelector('#opponent-area .cards-placeholder').innerHTML = '[Cartas del rival ocultas]';
+        document.getElementById('my-cards').innerHTML = 'Tus cartas aparecerán aquí';
+        document.getElementById('betting-log').classList.add('hidden'); // Ocultamos el panel
+        document.getElementById('betting-log').innerHTML = ''; // Vaciamos los textos
+        
+        // 3. Rotamos roles y arrancamos
+        soyMano = !soyMano; 
+        iniciarRonda();
+    }
 }
 
 document.getElementById('btn-next-round').addEventListener('click', () => {
-    mostrarBotones([]); // Ocultamos el botón
-    limpiarYAvanzarRonda();
+    mostrarBotones([]); // Ocultamos tu botón
+    gameLog.innerText = "Esperando a que el rival esté listo para la siguiente mano...";
+    
+    // Sumamos nuestro voto y avisamos al rival
+    listosParaSiguiente++;
+    conn.send({ type: 'ready-next' });
+    
+    // Comprobamos si el rival ya había pulsado antes que nosotros
+    comprobarSiguienteRonda();
 });
