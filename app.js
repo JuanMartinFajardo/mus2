@@ -12,6 +12,9 @@ let faseJuego = 'espera';
 let cartasSeleccionadas = [];
 let descartesListos = 0; 
 
+let auto_replay_round = false; // Ponlo a true si quieres que salte sola
+
+
 // Variables del motor de apuestas
 const fasesApuesta = ['Grande', 'Chica', 'Pares', 'Juego'];
 let indiceFaseActual = 0;
@@ -24,6 +27,9 @@ let pasesConsecutivos = 0;
 
 let miEstadoPares = false, miEstadoJuego = false;
 let rivalEstadoPares = null, rivalEstadoJuego = null;
+let ganadoresFase = { 'Grande': null, 'Chica': null, 'Pares': null, 'Juego': null };
+let cartasRivalTemp = null;
+const delay = ms => new Promise(res => setTimeout(res, ms)); // Para hacer pausas dramáticas en el log
 
 const setupScreen = document.getElementById('setup-screen');
 const gameScreen = document.getElementById('game-screen');
@@ -128,6 +134,10 @@ function setupConnection() {
                 break;
             case 'apuesta-accion':
                 procesarAccionRival(data.accion, data.cantidad);
+                break;
+            case 'showdown':
+                cartasRivalTemp = data.cards;
+                if (faseJuego === 'recuento') iniciarRecuento();
                 break;
         }
     });
@@ -318,6 +328,7 @@ function iniciarFaseApuestas() {
     indiceFaseActual = 0;
     botes = { 'Grande': 0, 'Chica': 0, 'Pares': 0, 'Juego': 0 };
     apuestaEnAire = 0;
+    ganadoresFase = { 'Grande': null, 'Chica': null, 'Pares': null, 'Juego': null };
     
     const logDiv = document.getElementById('betting-log');
     logDiv.innerHTML = `
@@ -403,6 +414,7 @@ function prepararRondaApuesta() {
     actualizarInterfazApuestas();
 }
 
+
 function actualizarInterfazApuestas() {
     const nombreFase = fasesApuesta[indiceFaseActual];
     
@@ -415,17 +427,26 @@ function actualizarInterfazApuestas() {
     document.getElementById('apuesta-responder').classList.add('hidden');
 
     if (miTurnoHablar) {
-        gameLog.innerText = `[Fase de ${nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego ? 'Punto' : nombreFase}] - Te toca decidir.`;
+        let n = (nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego) ? 'Punto' : nombreFase;
+        gameLog.innerText = `[Fase de ${n}] - Te toca decidir.`;
         
-        // AQUÍ ESTABA EL ERROR: Ahora comprueba si hay una subida pendiente real
         if (subidaPendiente === 0) {
-            // Si no hay apuestas previas, puedes Envidar o Pasar
             document.getElementById('apuesta-iniciar').classList.remove('hidden');
             document.getElementById('in-envidar').value = 2;
         } else {
-            // Si ya te han envidado, solo puedes Ver, Subir o No ver
             document.getElementById('apuesta-responder').classList.remove('hidden');
-            document.getElementById('in-subir').value = 2;
+            
+            // ¡NUEVO! Bloqueo de órdago
+            if (subidaPendiente === 'ÓRDAGO') {
+                document.getElementById('in-subir').classList.add('hidden');
+                document.getElementById('btn-subir').classList.add('hidden');
+                document.getElementById('btn-ordago-resp').classList.add('hidden');
+            } else {
+                document.getElementById('in-subir').classList.remove('hidden');
+                document.getElementById('btn-subir').classList.remove('hidden');
+                document.getElementById('btn-ordago-resp').classList.remove('hidden');
+                document.getElementById('in-subir').value = 2;
+            }
         }
     } else {
         gameLog.innerText = `El rival está pensando...`;
@@ -444,22 +465,25 @@ function avanzarSiguienteFase(botaAñadir = 0) {
 }
 
 function finDeRondas() {
+    faseJuego = 'recuento';
     document.getElementById('mi-turno').classList.add('hidden');
     document.getElementById('turno-rival').classList.add('hidden');
     mostrarBotones([]);
     
-    gameLog.innerText = "¡Fase de apuestas terminada! (Próximamente: recuento de puntos). Rotando roles...";
+    gameLog.innerText = "¡Fase de apuestas terminada! Mostrando cartas...";
     
-    // Rotamos los roles para poder seguir jugando
-    setTimeout(() => {
-        soyMano = !soyMano;
-        iniciarRonda();
-    }, 4000);
+    // Nos enviamos las cartas para comprobar quién gana
+    conn.send({ type: 'showdown', cards: misCartas });
+    
+    // Si el rival fue más rápido y ya nos las mandó, iniciamos
+    if (cartasRivalTemp) {
+        iniciarRecuento();
+    }
 }
 
 // --- ACCIONES DE APUESTA ---
 
-// --- ACCIONES DE APUESTA ---
+
 
 function realizarAccion(accion, cantidad = 0) {
     miTurnoHablar = false;
@@ -480,6 +504,7 @@ function realizarAccion(accion, cantidad = 0) {
     else if (accion === 'nover') {
         let deje = apuestaVista > 0 ? apuestaVista : 1;
         sumarPuntos('rival', deje);
+        ganadoresFase[nombreFase] = 'rival'; // ¡NUEVO! El rival ya ganó esta fase
         gameLog.innerText = `Te has achantado. El rival se lleva ${deje} punto(s) de deje.`;
         avanzarSiguienteFase(0); 
     }
@@ -500,10 +525,15 @@ function realizarAccion(accion, cantidad = 0) {
         gameLog.innerText = `Has subido ${cantidad}.`;
     }
     else if (accion === 'ver') {
-        gameLog.innerText = `Has visto la apuesta.`;
-        botes[nombreFase] += (apuestaVista + subidaPendiente);
-        avanzarSiguienteFase(0);
-    }
+            gameLog.innerText = `Has visto la apuesta.`;
+            if (subidaPendiente === 'ÓRDAGO') {
+                botes[nombreFase] = 40; // ¡NUEVO! Órdago aceptado
+                finDeRondas();
+            } else {
+                botes[nombreFase] += (apuestaVista + subidaPendiente);
+            }
+            avanzarSiguienteFase(0);
+        }
     else if (accion === 'ordago') {
         apuestaVista += (subidaPendiente > 0 ? subidaPendiente : 0);
         subidaPendiente = 'ÓRDAGO';
@@ -531,9 +561,10 @@ function procesarAccionRival(accion, cantidad) {
     else if (accion === 'nover') {
         let deje = apuestaVista > 0 ? apuestaVista : 1;
         sumarPuntos('yo', deje);
+        ganadoresFase[nombreFase] = 'yo'; // ¡NUEVO! Yo gano esta fase
         gameLog.innerText = `¡El rival no ha querido ver! Te llevas ${deje} punto(s) de deje.`;
-        avanzarSiguienteFase(0);
-    }
+        avanzarSiguienteFase(0);}
+
     else if (accion === 'envidar') {
         pasesConsecutivos = 0;
         apuestaVista = 0;
@@ -556,7 +587,12 @@ function procesarAccionRival(accion, cantidad) {
     }
     else if (accion === 'ver') {
         gameLog.innerText = `El rival HA VISTO. Apuesta cerrada.`;
-        botes[nombreFase] += (apuestaVista + subidaPendiente);
+        if (subidaPendiente === 'ÓRDAGO') {
+            botes[nombreFase] = 40; // ¡NUEVO! Órdago aceptado
+            finDeRondas();
+        } else {
+            botes[nombreFase] += (apuestaVista + subidaPendiente);
+        }
         avanzarSiguienteFase(0);
     }
     else if (accion === 'ordago') {
@@ -613,7 +649,7 @@ function alternarCarta(index, div) {
 
 function mostrarBotones(ids) {
     const contenedor = document.getElementById('action-buttons');
-    const allIds = ['btn-deal', 'btn-pedrete', 'btn-mus', 'btn-nomus', 'btn-descartar'];
+    const allIds = ['btn-deal', 'btn-pedrete', 'btn-mus', 'btn-nomus', 'btn-descartar', 'btn-next-round'];
     allIds.forEach(id => document.getElementById(id).classList.add('hidden'));
     
     if (ids.length > 0) {
@@ -630,3 +666,153 @@ function sumarPuntos(quien, cantidad) {
     document.getElementById('puntos-mios').innerText = puntosMios;
     document.getElementById('puntos-rival').innerText = puntosRival;
 }
+
+
+// ==========================================
+// --- LÓGICA DE COMPARACIÓN Y RECUENTO ---
+// ==========================================
+
+function getValoresMus(cartas) { 
+    return cartas.map(c => c.valor === 3 ? 12 : (c.valor === 2 ? 1 : c.valor)); 
+}
+
+function compararCartas(mis, sus, isGrande) {
+    let mV = getValoresMus(mis).sort((a,b) => isGrande ? b-a : a-b);
+    let sV = getValoresMus(sus).sort((a,b) => isGrande ? b-a : a-b);
+    for(let i=0; i<4; i++) { 
+        if(mV[i] > sV[i]) return isGrande ? 'yo' : 'rival'; 
+        if(mV[i] < sV[i]) return isGrande ? 'rival' : 'yo'; 
+    }
+    return soyMano ? 'yo' : 'rival'; // En empate, gana la mano
+}
+
+function getParesInfo(cartas) {
+    let counts = {};
+    getValoresMus(cartas).forEach(v => counts[v] = (counts[v] || 0) + 1);
+    let pares = Object.entries(counts).filter(e => e[1] >= 2).sort((a,b) => b[0] - a[0]);
+    
+    if(pares.length === 0) return { tipo: 0, premio: 0 };
+    if(pares.length === 1 && pares[0][1] === 2) return { tipo: 1, v1: parseInt(pares[0][0]), premio: 1 }; // Par
+    if(pares.length === 1 && pares[0][1] === 3) return { tipo: 2, v1: parseInt(pares[0][0]), premio: 2 }; // Trío
+    if(pares.length === 1 && pares[0][1] === 4) return { tipo: 3, v1: parseInt(pares[0][0]), v2: parseInt(pares[0][0]), premio: 3 }; // Duplex 4 iguales
+    return { tipo: 3, v1: Math.max(pares[0][0], pares[1][0]), v2: Math.min(pares[0][0], pares[1][0]), premio: 3 }; // Duplex 2 pares
+}
+
+function compParesInfo(mi, su) {
+    if(mi.tipo > su.tipo) return 'yo'; if(mi.tipo < su.tipo) return 'rival';
+    if(mi.v1 > su.v1) return 'yo'; if(mi.v1 < su.v1) return 'rival';
+    if(mi.v2 && su.v2) { if(mi.v2 > su.v2) return 'yo'; if(mi.v2 < su.v2) return 'rival'; }
+    return soyMano ? 'yo' : 'rival';
+}
+
+function getSumaJuego(cartas) { 
+    return cartas.reduce((acc, c) => acc + (c.valor === 3 ? 10 : (c.valor >= 10 ? 10 : (c.valor === 2 ? 1 : c.valor))), 0); 
+}
+
+const jRank = {31:8, 32:7, 40:6, 37:5, 36:4, 35:3, 34:2, 33:1};
+function compJuego(miS, suS) { 
+    if(jRank[miS] > jRank[suS]) return 'yo'; 
+    if(jRank[miS] < jRank[suS]) return 'rival'; 
+    return soyMano ? 'yo' : 'rival'; 
+}
+
+function compPunto(miS, suS) { 
+    if(miS > suS) return 'yo'; 
+    if(miS < suS) return 'rival'; 
+    return soyMano ? 'yo' : 'rival'; 
+}
+
+// LA FUNCIÓN PRINCIPAL DE RECUENTO
+
+
+async function iniciarRecuento() {
+    // 1. Destapar cartas del rival
+    const contenedorRival = document.querySelector('#opponent-area .cards-placeholder');
+    contenedorRival.innerHTML = '';
+    cartasRivalTemp.forEach(c => {
+        const d = document.createElement('div'); 
+        d.className = 'carta'; 
+        d.style.backgroundColor = '#d8dee9'; 
+        d.style.color = 'black';
+        d.innerText = c.texto;
+        contenedorRival.appendChild(d);
+    });
+
+    // AÑADIDO: Usamos innerHTML para permitir formato y sentar la base del log
+    gameLog.innerHTML = "<strong>¡Cartas arriba! Iniciando recuento...</strong>"; 
+    await delay(2000);
+
+    // 2. Iterar por las fases en orden
+    for (let fase of fasesApuesta) {
+        if (puntosMios >= 40 || puntosRival >= 40) break; 
+        
+        let ganador = ganadoresFase[fase];
+        let ptsBote = botes[fase]; 
+        let ptsBonus = 0; 
+        let nombreLog = fase;
+
+        if (fase === 'Grande') { 
+            if (!ganador) ganador = compararCartas(misCartas, cartasRivalTemp, true); 
+        }
+        else if (fase === 'Chica') { 
+            if (!ganador) ganador = compararCartas(misCartas, cartasRivalTemp, false); 
+        }
+        else if (fase === 'Pares') {
+            if (!miEstadoPares && !rivalEstadoPares) continue;
+            let miInfo = getParesInfo(misCartas);
+            let suInfo = getParesInfo(cartasRivalTemp);
+            if (!ganador) ganador = compParesInfo(miInfo, suInfo);
+            ptsBonus = ganador === 'yo' ? miInfo.premio : suInfo.premio;
+        }
+        else if (fase === 'Juego') {
+            if (!miEstadoJuego && !rivalEstadoJuego) {
+                nombreLog = 'Punto'; 
+                if (!ganador) ganador = compPunto(getSumaJuego(misCartas), getSumaJuego(cartasRivalTemp)); 
+                ptsBonus = 1;
+            } else {
+                if (!ganador) ganador = compJuego(getSumaJuego(misCartas), getSumaJuego(cartasRivalTemp));
+                let sumaGanador = ganador === 'yo' ? getSumaJuego(misCartas) : getSumaJuego(cartasRivalTemp);
+                ptsBonus = sumaGanador === 31 ? 3 : 2;
+            }
+        }
+
+        let totalPuntos = ptsBote + ptsBonus;
+        if (ptsBote >= 40) totalPuntos = 40;
+
+        if (totalPuntos > 0) {
+            sumarPuntos(ganador, totalPuntos);
+            // AÑADIDO: Usamos += y <br> para apilar el texto debajo del anterior
+            gameLog.innerHTML += `<br>👉 ${ganador === 'yo' ? 'Ganas' : 'El rival gana'} ${totalPuntos} pts en ${nombreLog}.`; 
+            await delay(2000); // He bajado un pelín el delay para que no se haga eterno
+        }
+    }
+
+    // 3. Comprobar victoria final
+    if (puntosMios >= 40 || puntosRival >= 40) {
+        // AÑADIDO: Apilamos el mensaje final de victoria
+        gameLog.innerHTML += `<br><br><strong>${puntosMios >= 40 ? "🏆 ¡HAS GANADO LA PARTIDA! 🏆" : "💀 ¡EL RIVAL HA GANADO LA PARTIDA! 💀"}</strong>`;
+        return; 
+    }
+
+    // 4. Preparar siguiente ronda según la variable auto_replay_round
+    if (auto_replay_round) {
+        gameLog.innerHTML += "<br><br><em>Preparando siguiente mano...</em>";
+        await delay(3000);
+        limpiarYAvanzarRonda();
+    } else {
+        gameLog.innerHTML += "<br><br><em>Ronda terminada. Comprueba los puntos.</em>";
+        mostrarBotones(['btn-next-round']); // Mostramos tu nuevo botón
+    }
+}
+
+function limpiarYAvanzarRonda() {
+    document.querySelector('#opponent-area .cards-placeholder').innerHTML = '[Cartas del rival ocultas]';
+    soyMano = !soyMano; 
+    cartasRivalTemp = null; 
+    iniciarRonda();
+}
+
+document.getElementById('btn-next-round').addEventListener('click', () => {
+    mostrarBotones([]); // Ocultamos el botón
+    limpiarYAvanzarRonda();
+});
