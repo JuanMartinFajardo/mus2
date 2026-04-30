@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mus Minimalista</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Cargamos la librería mágica para conectarnos -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <div id="setup-screen" class="screen">
+        <h1>🎴 Mus P2P</h1>
+        <div class="panel">
+            <h3>Soy el Host</h3>
+            <button id="btn-create">Crear Partida</button>
+            <p>Tu código para compartir es: <span id="my-id" class="highlight">...</span></p>
+        </div>
+        
+        <div class="panel">
+            <h3>Soy el Invitado</h3>
+            <input type="text" id="join-id" placeholder="Introduce el código del Host">
+            <button id="btn-join">Conectarse</button>
+        </div>
+        <p id="status-msg"></p>
+    </div>
+
+    <div id="game-screen" class="screen hidden">
+        <div class="table">
+            <div id="opponent-area" class="player-area">
+                <p>Rival</p>
+                <div class="cards-placeholder">[Cartas del rival ocultas]</div>
+            </div>
+            
+            <div class="center-area">
+                <p id="game-log">Esperando para repartir...</p>
+                <button id="btn-deal" class="hidden">Repartir Cartas</button>
+            </div>
+
+            <div id="my-area" class="player-area">
+                <p>Tú</p>
+                <div id="my-cards" class="cards-placeholder">Tus cartas aparecerán aquí</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
