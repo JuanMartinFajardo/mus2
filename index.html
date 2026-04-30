@@ -26,23 +26,57 @@
     </div>
 
     <div id="game-screen" class="screen hidden">
-        <div class="table">
-            <div id="opponent-area" class="player-area">
-                <p>Rival</p>
-                <div class="cards-placeholder">[Cartas del rival ocultas]</div>
-            </div>
-            
-            <div class="center-area">
+            <div class="table">
+                <div id="opponent-area" class="player-area">
+                    <p>Rival - Puntos: <span id="puntos-rival" class="highlight">0</span>/40</p>
+                    <p id="turno-rival" class="turno-indicador hidden">⚠️ El rival habla</p>
+                    <div class="cards-placeholder">[Cartas del rival ocultas]</div>
+                </div>
+                
+        <div class="center-area">
+                <div id="betting-log" class="hidden">
+                    <!-- Aquí aparecerá Grande: 2, Chica: 0, etc. -->
+                </div>
                 <p id="game-log">Esperando para repartir...</p>
-                <button id="btn-deal" class="hidden">Repartir Cartas</button>
+                
+                <div id="action-buttons" class="hidden">
+                    <!-- Botones anteriores -->
+                    <button id="btn-deal" class="hidden">Repartir Cartas</button>
+                    <button id="btn-pedrete" class="hidden">¡Pedrete!</button>
+                    <button id="btn-mus" class="hidden">Mus</button>
+                    <button id="btn-nomus" class="hidden">No hay Mus</button>
+                    <button id="btn-descartar" class="hidden">Descartar (0)</button>
+
+                    <!-- NUEVOS: Botones de Iniciar Apuesta -->
+                    <div id="apuesta-iniciar" class="apuesta-grupo hidden">
+                        <div class="apuesta-col">
+                            <input type="number" id="in-envidar" value="2" min="1">
+                            <button id="btn-envidar">Envidar</button>
+                        </div>
+                        <button id="btn-pasar">Pasar</button>
+                        <button id="btn-ordago">Órdago</button>
+                    </div>
+
+                    <!-- NUEVOS: Botones de Responder Apuesta -->
+                    <div id="apuesta-responder" class="apuesta-grupo hidden">
+                        <button id="btn-ver">Ver</button>
+                        <div class="apuesta-col">
+                            <input type="number" id="in-subir" value="2" min="1">
+                            <button id="btn-subir">Subir</button>
+                        </div>
+                        <button id="btn-nover">No ver</button>
+                        <button id="btn-ordago-resp">Órdago</button>
+                    </div>
+                </div>
             </div>
 
-            <div id="my-area" class="player-area">
-                <p>Tú</p>
-                <div id="my-cards" class="cards-placeholder">Tus cartas aparecerán aquí</div>
+                <div id="my-area" class="player-area">
+                    <p id="mi-turno" class="turno-indicador hidden">⚠️ Tú hablas</p>
+                    <p>Tú <span id="mi-rol" class="highlight"></span> - Puntos: <span id="puntos-mios" class="highlight">0</span>/40</p>
+                    <div id="my-cards" class="cards-placeholder">Tus cartas aparecerán aquí</div>
+                </div>
             </div>
         </div>
-    </div>
 
     <script src="app.js"></script>
 </body>
