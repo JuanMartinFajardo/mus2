@@ -45,13 +45,12 @@ const gameLog = document.getElementById('game-log');
 
 
 const peerConfig = {
-    debug: 2,
+    debug: 3, // Nivel máximo para ver qué bloquea exactamente en tu consola
+    pingInterval: 5000, // Fuerza pings para evitar que Chrome cierre el túnel
     config: {
         'iceServers': [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' }
+            { urls: 'stun:global.stun.twilio.com:3478' } // STUN ultrarrobusto
         ]
     }
 };
@@ -67,10 +66,15 @@ document.getElementById('btn-create').addEventListener('click', () => {
         statusMsg.innerText = "Esperando a que se conecte tu amigo...";
     });
     
-    peer.on('connection', (connection) => { 
+peer.on('connection', (connection) => { 
         conn = connection; 
-        statusMsg.innerText = "¡Rival encontrado! Estableciendo conexión...";
-        setupConnection(); 
+        statusMsg.innerText = "¡Rival encontrado! Abriendo túnel...";
+        
+        // Ejecución blindada
+        conn.on('open', iniciarPantallaJuego);
+        if (conn.open) iniciarPantallaJuego();
+        
+        configurarRecepcionDatos();
     });
     
     peer.on('error', (err) => { statusMsg.innerText = "❌ Error: " + err.type; });
@@ -93,7 +97,11 @@ document.getElementById('btn-join').addEventListener('click', () => {
         statusMsg.innerText = `Buscando a ${hostId}...`;
         // reliable: true fuerza un canal estable y libre de cortes
         conn = peer.connect(hostId);
-        setupConnection();
+        // Ejecución blindada
+        conn.on('open', iniciarPantallaJuego);
+        if (conn.open) iniciarPantallaJuego();
+        
+        configurarRecepcionDatos();
     });
 });
 
