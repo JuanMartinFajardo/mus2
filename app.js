@@ -42,14 +42,17 @@ const gameLog = document.getElementById('game-log');
 
 // --- SETUP DE CONEXIÓN PEERJS ---
 
-// Configuramos los faros STUN de Google para ayudar a traspasar Firewalls y 4G
+
+
+// Forzamos la conexión segura para que GitHub Pages y los móviles no lo bloqueen
 const peerConfig = {
+    secure: true,
+    host: '0.peerjs.com',
+    port: 443,
     config: {
         'iceServers': [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' }
+            { urls: 'stun:stun1.l.google.com:19302' }
         ]
     }
 };
@@ -61,9 +64,10 @@ document.getElementById('btn-create').addEventListener('click', () => {
     peer = new Peer(randomId, peerConfig);
     peer.on('open', (id) => {
         document.getElementById('my-id').innerText = id;
-        statusMsg.innerText = "Esperando a que se conecte tu amigo...";
+        statusMsg.innerText = "Esperando a que se conecte tu rival...";
     });
     peer.on('connection', (connection) => { conn = connection; setupConnection(); });
+    peer.on('error', (err) => { statusMsg.innerText = "❌ Error: " + err.type; });
 });
 
 document.getElementById('btn-join').addEventListener('click', () => {
@@ -71,6 +75,11 @@ document.getElementById('btn-join').addEventListener('click', () => {
     const hostId = document.getElementById('join-id').value.trim().toUpperCase();
     if (!hostId) return;
     
+    // Protección anti-despistes: Si el invitado solo pone "1234", le añadimos "MUS-"
+    if (!hostId.startsWith('MUS-')) {
+        hostId = 'MUS-' + hostId;
+    }
+
     peer = new Peer(peerConfig);
     peer.on('error', (err) => { statusMsg.innerText = "❌ Error: " + err.type; });
     peer.on('open', () => {
