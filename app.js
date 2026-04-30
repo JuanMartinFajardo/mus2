@@ -30,6 +30,10 @@ let rivalEstadoPares = null, rivalEstadoJuego = null;
 let ganadoresFase = { 'Grande': null, 'Chica': null, 'Pares': null, 'Juego': null };
 let cartasRivalTemp = null;
 const delay = ms => new Promise(res => setTimeout(res, ms)); // Para hacer pausas dramáticas en el log
+let faseOrdagoAceptado = null; 
+let cartasDescartadasRival = 0;
+
+
 
 const setupScreen = document.getElementById('setup-screen');
 const gameScreen = document.getElementById('game-screen');
@@ -91,11 +95,15 @@ function setupConnection() {
                 evaluarInicioMano();
                 break;
             case 'request-discard': 
+                cartasDescartadasRival = data.count; // Registramos sus descartes
                 data.descartadas.forEach(c => descartes.push(c));
                 const nuevas = robarCartas(data.count);
                 conn.send({ type: 'give-discard-cards', cards: nuevas });
                 descartesListos++;
                 comprobarFinDescartes();
+                break;
+            case 'info-descarte': // El Host avisa de cuántas tira
+                cartasDescartadasRival = data.count;
                 break;
             case 'give-discard-cards': 
                 data.cards.forEach(c => misCartas.push(c));
@@ -227,6 +235,7 @@ function realizarRepartoLocal() {
     evaluarInicioMano();
 }
 
+
 function evaluarInicioMano() {
     mostrarMisCartas();
     cartasSeleccionadas = [];
@@ -241,14 +250,18 @@ function evaluarInicioMano() {
     }
     
     faseJuego = 'mus';
+    // ¡NUEVO! Mostramos los descartes del rival visualmente
+    let msgExtra = cartasDescartadasRival > 0 ? `<br><span style="color:#a3be8c; font-size:0.9em;">(El rival cambió ${cartasDescartadasRival} cartas)</span>` : '';
+    
     if (soyMano) {
-        gameLog.innerText = "Eres mano. ¿Quieres Mus?";
+        gameLog.innerHTML = `Eres mano. ¿Quieres Mus?${msgExtra}`;
         mostrarBotones(['btn-mus', 'btn-nomus']);
     } else {
-        gameLog.innerText = "Esperando a que la mano hable...";
+        gameLog.innerHTML = `Esperando a que la mano hable...${msgExtra}`;
         mostrarBotones([]);
     }
 }
+
 
 // --- BOTONES DE MUS Y DESCARTE ---
 document.getElementById('btn-pedrete').addEventListener('click', () => {
@@ -287,6 +300,7 @@ document.getElementById('btn-nomus').addEventListener('click', () => {
 
 function iniciarDescarte() {
     faseJuego = 'descarte';
+    cartasDescartadasRival = 0;
     if(isHost) descartesListos = 0;
     gameLog.innerText = "¡Hay Mus! Selecciona las cartas que quieres tirar.";
     mostrarBotones(['btn-descartar']);
@@ -304,7 +318,8 @@ document.getElementById('btn-descartar').addEventListener('click', () => {
         cartasTiradasObj.forEach(c => descartes.push(c));
         const nuevas = robarCartas(cant);
         nuevas.forEach(c => misCartas.push(c));
-        gameLog.innerText = "Esperando a que el Invitado se descarte...";
+        conn.send({ type: 'info-descarte', count: cant }); // El Host avisa al Guest de cuántas cartas tira
+        gameLog.innerText = "Esperando a que el rival se descarte...";
         descartesListos++;
         comprobarFinDescartes();
     } else {
@@ -323,6 +338,7 @@ function comprobarFinDescartes() {
 // --- MOTOR DE APUESTAS ---
 
 function iniciarFaseApuestas() {
+    faseOrdagoAceptado = null;
     mostrarBotones([]); 
     faseJuego = 'apuestas';
     indiceFaseActual = 0;
@@ -449,7 +465,8 @@ function actualizarInterfazApuestas() {
             }
         }
     } else {
-        gameLog.innerText = `El rival está pensando...`;
+        let n = (nombreFase === 'Juego' && !miEstadoJuego && !rivalEstadoJuego) ? 'Punto' : nombreFase;
+        gameLog.innerText = `[Fase de ${n}] - Esperando acción del rival...`;
     }
 }
 
@@ -527,8 +544,10 @@ function realizarAccion(accion, cantidad = 0) {
     else if (accion === 'ver') {
             gameLog.innerText = `Has visto la apuesta.`;
             if (subidaPendiente === 'ÓRDAGO') {
+                faseOrdagoAceptado = nombreFase;
                 botes[nombreFase] = 40; // ¡NUEVO! Órdago aceptado
                 finDeRondas();
+                return;
             } else {
                 botes[nombreFase] += (apuestaVista + subidaPendiente);
             }
@@ -589,7 +608,9 @@ function procesarAccionRival(accion, cantidad) {
         gameLog.innerText = `El rival HA VISTO. Apuesta cerrada.`;
         if (subidaPendiente === 'ÓRDAGO') {
             botes[nombreFase] = 40; // ¡NUEVO! Órdago aceptado
+            faseOrdagoAceptado = nombreFase;
             finDeRondas();
+            return;
         } else {
             botes[nombreFase] += (apuestaVista + subidaPendiente);
         }
@@ -650,11 +671,16 @@ function alternarCarta(index, div) {
 function mostrarBotones(ids) {
     const contenedor = document.getElementById('action-buttons');
     const allIds = ['btn-deal', 'btn-pedrete', 'btn-mus', 'btn-nomus', 'btn-descartar', 'btn-next-round'];
-    allIds.forEach(id => document.getElementById(id).classList.add('hidden'));
-    
+    allIds.forEach(id => {
+        let el = document.getElementById(id);
+        if(el) el.classList.add('hidden');
+    });    
     if (ids.length > 0) {
         contenedor.classList.remove('hidden');
-        ids.forEach(id => document.getElementById(id).classList.remove('hidden'));
+        ids.forEach(id => {
+            let el = document.getElementById(id);
+            if(el) el.classList.remove('hidden');
+        });
     } else {
         contenedor.classList.add('hidden');
     }
@@ -726,7 +752,6 @@ function compPunto(miS, suS) {
 
 
 async function iniciarRecuento() {
-    // 1. Destapar cartas del rival
     const contenedorRival = document.querySelector('#opponent-area .cards-placeholder');
     contenedorRival.innerHTML = '';
     cartasRivalTemp.forEach(c => {
@@ -738,12 +763,12 @@ async function iniciarRecuento() {
         contenedorRival.appendChild(d);
     });
 
-    // AÑADIDO: Usamos innerHTML para permitir formato y sentar la base del log
     gameLog.innerHTML = "<strong>¡Cartas arriba! Iniciando recuento...</strong>"; 
     await delay(2000);
 
-    // 2. Iterar por las fases en orden
-    for (let fase of fasesApuesta) {
+    let fasesAEvaluar = faseOrdagoAceptado ? [faseOrdagoAceptado] : fasesApuesta;
+
+    for (let fase of fasesAEvaluar) { 
         if (puntosMios >= 40 || puntosRival >= 40) break; 
         
         let ganador = ganadoresFase[fase];
@@ -759,10 +784,12 @@ async function iniciarRecuento() {
         }
         else if (fase === 'Pares') {
             if (!miEstadoPares && !rivalEstadoPares) continue;
-            let miInfo = getParesInfo(misCartas);
-            let suInfo = getParesInfo(cartasRivalTemp);
-            if (!ganador) ganador = compParesInfo(miInfo, suInfo);
-            ptsBonus = ganador === 'yo' ? miInfo.premio : suInfo.premio;
+            if (!ganador) {
+                if (miEstadoPares && !rivalEstadoPares) ganador = 'yo';
+                else if (!miEstadoPares && rivalEstadoPares) ganador = 'rival';
+                else ganador = compParesInfo(getParesInfo(misCartas), getParesInfo(cartasRivalTemp));
+            }
+            ptsBonus = ganador === 'yo' ? getParesInfo(misCartas).premio : getParesInfo(cartasRivalTemp).premio;
         }
         else if (fase === 'Juego') {
             if (!miEstadoJuego && !rivalEstadoJuego) {
@@ -770,40 +797,41 @@ async function iniciarRecuento() {
                 if (!ganador) ganador = compPunto(getSumaJuego(misCartas), getSumaJuego(cartasRivalTemp)); 
                 ptsBonus = 1;
             } else {
-                if (!ganador) ganador = compJuego(getSumaJuego(misCartas), getSumaJuego(cartasRivalTemp));
+                if (!ganador) {
+                    if (miEstadoJuego && !rivalEstadoJuego) ganador = 'yo';
+                    else if (!miEstadoJuego && rivalEstadoJuego) ganador = 'rival';
+                    else ganador = compJuego(getSumaJuego(misCartas), getSumaJuego(cartasRivalTemp));
+                }
                 let sumaGanador = ganador === 'yo' ? getSumaJuego(misCartas) : getSumaJuego(cartasRivalTemp);
                 ptsBonus = sumaGanador === 31 ? 3 : 2;
             }
         }
 
-        let totalPuntos = ptsBote + ptsBonus;
-        if (ptsBote >= 40) totalPuntos = 40;
+        // CORRECCIÓN 2: Dejamos un solo 'let totalPuntos'
+        let totalPuntos = faseOrdagoAceptado ? 40 : (ptsBote + ptsBonus);
 
         if (totalPuntos > 0) {
             sumarPuntos(ganador, totalPuntos);
-            // AÑADIDO: Usamos += y <br> para apilar el texto debajo del anterior
             gameLog.innerHTML += `<br>👉 ${ganador === 'yo' ? 'Ganas' : 'El rival gana'} ${totalPuntos} pts en ${nombreLog}.`; 
-            await delay(2000); // He bajado un pelín el delay para que no se haga eterno
+            await delay(2000); 
         }
     }
 
-    // 3. Comprobar victoria final
     if (puntosMios >= 40 || puntosRival >= 40) {
-        // AÑADIDO: Apilamos el mensaje final de victoria
         gameLog.innerHTML += `<br><br><strong>${puntosMios >= 40 ? "🏆 ¡HAS GANADO LA PARTIDA! 🏆" : "💀 ¡EL RIVAL HA GANADO LA PARTIDA! 💀"}</strong>`;
         return; 
     }
 
-    // 4. Preparar siguiente ronda según la variable auto_replay_round
     if (auto_replay_round) {
         gameLog.innerHTML += "<br><br><em>Preparando siguiente mano...</em>";
         await delay(3000);
         limpiarYAvanzarRonda();
     } else {
         gameLog.innerHTML += "<br><br><em>Ronda terminada. Comprueba los puntos.</em>";
-        mostrarBotones(['btn-next-round']); // Mostramos tu nuevo botón
+        mostrarBotones(['btn-next-round']); 
     }
 }
+
 
 function limpiarYAvanzarRonda() {
     document.querySelector('#opponent-area .cards-placeholder').innerHTML = '[Cartas del rival ocultas]';
