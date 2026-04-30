@@ -13,7 +13,7 @@ let cartasSeleccionadas = [];
 let descartesListos = 0; 
 
 let auto_replay_round = false; // Ponlo a true si quieres que salte sola
-
+let listosParaSiguiente = 0;   // ¡NUEVO! Contador para sincronizar la ronda
 
 // Variables del motor de apuestas
 const fasesApuesta = ['Grande', 'Chica', 'Pares', 'Juego'];
