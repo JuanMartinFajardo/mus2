@@ -11,6 +11,8 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 jugadores = {}  # Diccionario para guardar { 'id_secreto_sid': 'Nombre del Jugador' }
 partida_actual = None
 
+show_global_log = True #we print a global log in the terminal for debugging purposes, but you can set it to False if you want a cleaner console
+
 # --- RUTAS WEB ---
 @app.route('/')
 def index():
@@ -104,70 +106,6 @@ def handle_accion_juego(datos):
             partida_actual.recuento_calculado = False
         enviar_estado_a_jugadores()
 
-# --- FUNCIÓN CLAVE: EL REPARTO CIEGO ---
-def enviar_estado_a_jugadores():
-    global partida_actual
-    if not partida_actual: return
-        
-    for sid in jugadores.keys():
-        estado_del_jugador = partida_actual.estado[sid]
-        es_mi_turno = (sid == partida_actual.turno_de)
-        soy_mano = (sid == partida_actual.id_mano)
-        rival_sid = partida_actual.id_postre if sid == partida_actual.id_mano else partida_actual.id_mano
-        
-        if partida_actual.fase == 'descarte':
-            mensaje = "Fase: DESCARTE. Selecciona qué cartas quieres tirar."
-        elif partida_actual.fase == 'apuestas':
-            if partida_actual.indice_fase < len(partida_actual.fases_apuesta):
-                n_fase = partida_actual.fases_apuesta[partida_actual.indice_fase]
-                mensaje = f"Fase de {n_fase.upper()}. Turno de: {jugadores[partida_actual.turno_de]}"
-            else:
-                mensaje = "Fase de RECUENTO..."
-        else:
-            mensaje = f"Fase: {partida_actual.fase.upper()}. Turno de: {jugadores[partida_actual.turno_de]}"
-        
-        info_apuestas = {
-            'fase_actual': '',
-            'subida': partida_actual.subida_pendiente,
-            'botes': partida_actual.botes,
-            'apuesta_vista': partida_actual.apuesta_vista,
-            'soy_quien_sube': (partida_actual.quien_sube == sid)
-        }
-        if partida_actual.fase == 'apuestas' and partida_actual.indice_fase < len(partida_actual.fases_apuesta):
-            info_apuestas['fase_actual'] = partida_actual.fases_apuesta[partida_actual.indice_fase]
-        
-        datos_recuento = None
-        cartas_rival = partida_actual.estado[rival_sid]['cartas'] # CORRECCIÓN DE NOMBRE
-        
-        if partida_actual.fase == 'recuento':
-            pasos_crudos = partida_actual.calcular_recuento()
-            datos_recuento = []
-            for paso in pasos_crudos:
-                datos_recuento.append({
-                    'fase': paso['fase'],
-                    'puntos_ganados': paso['puntos_ganados'],
-                    'gano_yo': paso['ganador_sid'] == sid, 
-                    # Sacamos los puntos exactos dependiendo de si somos Mano o Postre
-                    'mis_puntos_finales': paso['puntos_mano'] if sid == partida_actual.id_mano else paso['puntos_postre'],
-                    'rival_puntos_finales': paso['puntos_postre'] if sid == partida_actual.id_mano else paso['puntos_mano']
-                })
-
-        # CORRECCIÓN EN EL EMIT: Etiquetas exactas para app.js
-        emit('actualizar_mesa', {
-            'fase': partida_actual.fase,
-            'es_mi_turno': es_mi_turno,
-            'soy_mano': soy_mano,
-            'descartes_listos': estado_del_jugador.get('descartes_listos', False),
-            'descartes_rival': partida_actual.estado[rival_sid].get('descartes_hechos', 0),
-            'apuestas': info_apuestas,
-            'mensaje': mensaje,
-            'mis_cartas': estado_del_jugador['cartas'],
-            'mis_puntos': estado_del_jugador['puntos'],
-            'puntos_rival': partida_actual.estado[rival_sid]['puntos'],
-            'mensaje_transicion': partida_actual.mensaje_transicion,
-            'recuento': datos_recuento,  # <-- AHORA SÍ: "recuento"
-            'cartas_rival': cartas_rival # <-- AHORA SÍ: "cartas_rival"
-        }, room=sid)
 
 
 @socketio.on('accion_apuesta')
@@ -187,8 +125,11 @@ def handle_apuesta(datos):
     # Después de procesar la acción, volvemos a enviar la mesa actualizada a ambos
     enviar_estado_a_jugadores()
 
+
+
 # --- FUNCIÓN CLAVE: EL REPARTO CIEGO ---
 def enviar_estado_a_jugadores():
+    global show_global_log
     global partida_actual
     if not partida_actual: return
         
@@ -225,6 +166,7 @@ def enviar_estado_a_jugadores():
         
         datos_recuento = None
         cartas_rival = partida_actual.estado[rival_sid]['cartas']
+
         if partida_actual.fase == 'recuento':
             pasos_crudos = partida_actual.calcular_recuento()
             datos_recuento = []
@@ -237,14 +179,13 @@ def enviar_estado_a_jugadores():
                     datos_recuento.append(f"<i>{paso['texto_fase']}</i>")
                 else:
                     datos_recuento.append(f"<b>{sujeto}</b> {paso['texto_fase']}")
-                ''' datos_recuento.append({
-                    'fase': paso['fase'],
-                    'puntos_ganados': paso['puntos_ganados'],
-                    'gano_yo': paso['ganador_sid'] == sid, # Le chivamos si ha ganado él
-                    'mis_puntos_finales': partida_actual.estado[sid]['puntos'],
-                    'rival_puntos_finales': partida_actual.estado[rival_sid]['puntos']
-                })'''
 
+        if show_global_log:
+            print(f"📤 Enviando estado a {jugadores[sid]}: Fase {partida_actual.fase}, Turno de {jugadores[partida_actual.turno_de]}")
+            print(f"   Puntos propios: {estado_del_jugador['puntos']}")
+            print(f"   Puntos rival: {partida_actual.estado[rival_sid]['puntos']}")
+            print(f"   Apuestas: {info_apuestas}")
+            print(f"   Recuento: {datos_recuento}")
 
         # Enviamos un paquete de datos completo y blindado a esta pestaña concreta
         emit('actualizar_mesa', {
@@ -259,10 +200,13 @@ def enviar_estado_a_jugadores():
             'mis_puntos': estado_del_jugador['puntos'],
             'puntos_rival': partida_actual.estado[rival_sid]['puntos'],
             'mensaje_transicion': partida_actual.mensaje_transicion,
-            'datos_recuento': datos_recuento,
+            'recuento': datos_recuento,
             'cartas_rival': cartas_rival,
             'rival_puntos_finales': partida_actual.estado[rival_sid]['puntos']
         }, room=sid)
+
+
+
 
 
 if __name__ == '__main__':

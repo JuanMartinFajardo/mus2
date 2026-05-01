@@ -361,20 +361,7 @@ function mostrarRecuentoEstatico(datos) {
 
     if (datos.recuento && datos.recuento.length > 0) {
         for (let paso of datos.recuento) {
-            let ganadorTxt = paso.gano_yo ? "Has ganado" : "El rival ha ganado";
-            
-            if (paso.fase.includes('Achantado')) {
-                let faseLimpia = paso.fase.replace(' (Achantado)', '');
-                htmlRecuento += `👉 <i>(Alguien no quiso ver en ${faseLimpia})</i><br>`;
-            } else {
-                let faseMin = paso.fase.toLowerCase();
-                let prep = "en";
-                if (faseMin === 'grande' || faseMin === 'chica') prep = "a la";
-                if (faseMin === 'pares') prep = "por";
-                if (faseMin === 'juego' || faseMin === 'punto') prep = "por el";
-
-                htmlRecuento += `👉 <b>${ganadorTxt} ${paso.puntos_ganados}</b> ${prep} <b>${paso.fase}</b>.<br>`;
-            }
+            htmlRecuento += `${paso}<br>`
         }
     } else {
         htmlRecuento += "<em>(Hubo un error o la ronda no tuvo apuestas válidas)</em><br>";
