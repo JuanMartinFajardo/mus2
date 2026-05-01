@@ -14,7 +14,7 @@ jugadores = {}
 # salas = { 'A1B2': {'estado': 'esperando', 'sids': [sid1, sid2], 'motor': PartidaMus} }
 salas = {}      
 
-show_global_log = True 
+show_global_log = False 
 
 def generar_codigo():
     letras = string.ascii_uppercase + string.digits

@@ -1,15 +1,43 @@
 import random
 from collections import Counter
+import os
 
 # ==========================================
 # 1. BARAJA Y CARTAS
 # ==========================================
 
+Oros = 'Oros_btc'
+Copas = 'Copas_pirate'
+Espadas = 'Espadas'
+Bastos = 'Bastos'
 
+import os
 
+# 1. Obtenemos la ruta real de la carpeta donde está este script
+BASE_DIR = os.path.dirname(os.path.abspath(__name__))
+
+def obtener_ruta_imagen(nombre):
+    extensiones = [".jpg", ".png", ".jpeg"]
+    
+    for ext in extensiones:
+        # Construimos la ruta real para que Python la encuentre en el disco
+        # Ejemplo: C:/Proyecto/static/img/foto.jpg
+        ruta_real = os.path.join(BASE_DIR, "static", "img", f"{nombre}{ext}")
+        
+        if os.path.exists(ruta_real):
+            # Si existe, devolvemos la ruta que el NAVEGADOR entiende
+            return f"/static/img/{nombre}{ext}"
+            
+    return "/static/img/default.jpg"
+
+# Uso
+nombre = "mi_imagen"
+datos = {
+    'img': obtener_ruta_imagen(nombre)
+}
 
 def crear_baraja():
-    palos = ['Oros', 'Copas', 'Espadas', 'Bastos']
+    palos = [Oros, Copas, Espadas, Bastos]
     valores = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
     baraja = []
     
@@ -20,12 +48,12 @@ def crear_baraja():
             elif valor == 10: nombre = 'Sota'
             elif valor == 11: nombre = 'Caballo'
             elif valor == 12: nombre = 'Rey'
-            
+            print(f"Creando carta: {valor}_{palo.lower()}")
             baraja.append({
                 'valor': valor, 
                 'palo': palo,
-                # Generamos la ruta exacta: ej. /static/img/oros_3.png
-                'img': f"/static/img/{valor}_{palo.lower()}.jpg", 
+                # Generamos la ruta exacta: ej. /static/img/3_oros.png
+                'img': obtener_ruta_imagen(f"{valor}_{palo.lower()}"),
                 'texto': f"{nombre} de {palo}"
             })
             print(baraja)
