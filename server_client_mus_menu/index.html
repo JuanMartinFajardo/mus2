@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mus Online</title>
+    <!-- Aquí es donde carga el diseño. Si esto falla, se ve todo blanco -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Librería de WebSockets -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+
+    <!-- ========================================= -->
+    <!-- 1. PANTALLA PRINCIPAL (MENÚ LOBBY)        -->
+    <!-- ========================================= -->
+    <div id="menu-screen" class="screen">
+        <h1>🎴 Mus Online</h1>
+        <div class="panel">
+            <input type="text" id="nombre-jugador" placeholder="Tu nombre..." style="margin-bottom: 20px; width: 90%; font-size: 1.1em; padding: 8px;">
+            
+            <div style="padding: 15px; border: 1px solid #4c566a; border-radius: 8px; margin-bottom: 15px;">
+                <button id="btn-crear">Crear partida nueva</button>
+                <div id="codigo-creado" class="hidden" style="margin-top: 10px;">
+                    <p>Pásale este código a tu rival:</p>
+                    <h2 id="txt-codigo" style="color: #ebcb8b; letter-spacing: 3px; font-size: 2em; margin: 10px 0;"></h2>
+                    <p style="font-size: 0.9em; opacity: 0.8;" class="anim-parpadeo">Esperando a que se una...</p>
+                </div>
+            </div>
+
+            <div style="padding: 15px; border: 1px solid #4c566a; border-radius: 8px;">
+                <input type="text" id="in-codigo" placeholder="Código de sala..." style="width: 60%; text-transform: uppercase; font-size: 1.1em; padding: 6px; text-align: center;">
+                <button id="btn-unirse">Unirse</button>
+            </div>
+            
+            <p id="menu-msg" style="color: #bf616a; margin-top: 15px; font-weight: bold;"></p>
+        </div>
+    </div>
+
+    <!-- ========================================= -->
+    <!-- 2. PANTALLA DEL TAPETE (EL JUEGO)         -->
+    <!-- ========================================= -->
+    <!-- Empieza con la clase 'hidden' para no verse hasta que toque -->
+    <div id="game-screen" class="screen hidden">
+        
+        <div id="turno-rival" class="turno-indicador hidden">⚠️ El rival habla</div>
+        
+        <!-- ÁREA DEL RIVAL -->
+        <div id="opponent-area" class="area">
+            <p>Rival - Pts: <span id="puntos-rival" class="highlight">0</span>/40 | Partidas: <span id="partidas-rival" class="highlight">0</span> <span class="mejor-de-texto"></span></p>
+            <div class="cards-placeholder">[Cartas del rival ocultas]</div>
+        </div>
+
+        <!-- MESA CENTRAL -->
+        <div id="center-table" class="area">
+            <p id="game-log">Esperando para repartir...</p>
+            
+            <div id="action-buttons" class="hidden">
+                <button id="btn-deal">Repartir Cartas</button>
+                <button id="btn-pedrete" class="hidden">¡Pedrete!</button>
+                <button id="btn-mus" class="hidden">Mus</button>
+                <button id="btn-nomus" class="hidden">No hay Mus</button>
+                <button id="btn-descartar" class="hidden">Descartar (0)</button>
+                <button id="btn-next-round" class="hidden">Siguiente ronda</button>
+            </div>
+
+            <div id="apuesta-iniciar" class="hidden panel-apuestas">
+                <input type="number" id="in-envidar" value="2" min="2" max="40" style="width:50px;">
+                <button id="btn-envidar">Envidar</button>
+                <button id="btn-pasar">Pasar</button>
+                <button id="btn-ordago">Órdago</button>
+            </div>
+
+            <div id="apuesta-responder" class="hidden panel-apuestas">
+                <button id="btn-ver">Ver</button>
+                <input type="number" id="in-subir" value="2" min="2" max="40" style="width:50px;">
+                <button id="btn-subir">Subir</button>
+                <button id="btn-nover">No ver</button>
+                <button id="btn-ordago-resp">Órdago</button>
+            </div>
+
+            <div id="betting-log" class="hidden"></div>
+        </div>
+
+        <div id="mi-turno" class="turno-indicador hidden">⚠️ Tú hablas</div>
+
+        <!-- TU ÁREA -->
+        <div id="my-area" class="area">
+            <p>Tú <span id="mi-rol" class="highlight"></span> - Pts: <span id="puntos-mios" class="highlight">0</span>/40 | Partidas: <span id="partidas-mios" class="highlight">0</span> <span class="mejor-de-texto"></span></p>
+            <div id="my-cards" class="cards-container">
+                Tus cartas aparecerán aquí
+            </div>
+        </div>
+    </div>
+
+
+    <div class="watermark">Created by Juan Martin Fajardo</div>
+    <!-- Tu código de la lógica del juego -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

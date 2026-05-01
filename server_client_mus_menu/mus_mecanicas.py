@@ -5,10 +5,12 @@ from collections import Counter
 # 1. BARAJA Y CARTAS
 # ==========================================
 
+
+
+
 def crear_baraja():
     palos = ['Oros', 'Copas', 'Espadas', 'Bastos']
     valores = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
-    iconos = {'Oros': '🪙', 'Copas': '🍷', 'Espadas': '🗡️', 'Bastos': '🪵'}
     baraja = []
     
     for palo in palos:
@@ -21,9 +23,12 @@ def crear_baraja():
             
             baraja.append({
                 'valor': valor, 
-                'palo': palo, 
-                'texto': f"{nombre} de {palo} {iconos[palo]}"
+                'palo': palo,
+                # Generamos la ruta exacta: ej. /static/img/oros_3.png
+                'img': f"/static/img/{valor}_{palo.lower()}.jpg", 
+                'texto': f"{nombre} de {palo}"
             })
+            print(baraja)
     return baraja
 
 def get_valores_mus(cartas):

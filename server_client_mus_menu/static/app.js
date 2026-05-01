@@ -4,24 +4,60 @@ let miNombre = "";
 let faseJuego = 'espera';
 let cartasSeleccionadas = []; 
 
-const setupScreen = document.getElementById('setup-screen');
+// PANTALLAS CORRECTAS
+const menuScreen = document.getElementById('menu-screen');
 const gameScreen = document.getElementById('game-screen');
-const statusMsg = document.getElementById('status-msg');
 const gameLog = document.getElementById('game-log');
+
+// ==========================================
+// 1. LÓGICA DEL MENÚ Y SALAS
+// ==========================================
+const btnCrear = document.getElementById('btn-crear');
 const btnUnirse = document.getElementById('btn-unirse');
+const inCodigo = document.getElementById('in-codigo');
+const menuMsg = document.getElementById('menu-msg');
 
-// ==========================================
-// 1. ENVIAR ACCIONES AL SERVIDOR
-// ==========================================
-
-btnUnirse.addEventListener('click', () => {
-    miNombre = document.getElementById('nombre-jugador').value.trim() || "Jugador_" + Math.floor(Math.random() * 1000);
-    socket.emit('unirse_partida', { nombre: miNombre });
-    statusMsg.innerText = "Conectando con el servidor...";
+btnCrear.addEventListener('click', () => {
+    miNombre = document.getElementById('nombre-jugador').value.trim() || "Jugador 1";
+    socket.emit('crear_sala', { nombre: miNombre });
+    btnCrear.disabled = true;
     btnUnirse.disabled = true;
+    menuMsg.innerText = "Creando sala...";
 });
 
-// Botones de Reparto y Mus
+btnUnirse.addEventListener('click', () => {
+    miNombre = document.getElementById('nombre-jugador').value.trim() || "Jugador 2";
+    let cod = inCodigo.value.trim().toUpperCase();
+    if (!cod) {
+        menuMsg.innerText = "Escribe un código primero.";
+        return;
+    }
+    socket.emit('unirse_sala', { nombre: miNombre, codigo: cod });
+    menuMsg.innerText = "Conectando...";
+});
+
+socket.on('sala_creada', (datos) => {
+    document.getElementById('codigo-creado').classList.remove('hidden');
+    document.getElementById('txt-codigo').innerText = datos.codigo;
+    menuMsg.innerText = "";
+});
+
+socket.on('error_sala', (datos) => {
+    menuMsg.innerText = datos.mensaje;
+    btnCrear.disabled = false;
+    btnUnirse.disabled = false;
+});
+
+// AQUI ESTABA EL FALLO PRINCIPAL: Oculta el menuScreen
+socket.on('iniciar_partida', (datos) => {
+    menuScreen.classList.add('hidden');
+    gameScreen.classList.remove('hidden');
+});
+
+// ==========================================
+// 2. ACCIONES DE JUEGO AL SERVIDOR
+// ==========================================
+
 document.getElementById('btn-deal').addEventListener('click', () => {
     mostrarBotones([]); 
     socket.emit('accion_juego', { accion: 'repartir' });
@@ -42,7 +78,6 @@ document.getElementById('btn-descartar').addEventListener('click', () => {
     socket.emit('accion_juego', { accion: 'descartar', indices: cartasSeleccionadas });
 });
 
-// Botones de Apuestas
 ['pasar', 'ver', 'nover', 'ordago', 'ordago-resp'].forEach(id => {
     let el = document.getElementById('btn-' + id);
     if(el) el.addEventListener('click', () => {
@@ -66,71 +101,60 @@ document.getElementById('btn-subir').addEventListener('click', () => {
 
 document.getElementById('btn-next-round').addEventListener('click', (e) => {
     mostrarBotones([]);
-    // Limpiamos la pantalla visualmente por completo
     document.getElementById('my-cards').innerHTML = '';
     const contenedorRival = document.querySelector('#opponent-area .cards-placeholder');
     if (contenedorRival) contenedorRival.innerHTML = '';
     
-    // Comprobamos qué decía el botón para cambiar el texto de espera
     let textoEspera = e.target.innerText === "Siguiente partida" 
         ? "Esperando al rival para la siguiente partida..." 
         : "Esperando a que el rival esté listo...";
 
-    // Ponemos el mensaje en grande y en amarillo para que destaque
-    const gameLog = document.getElementById('game-log');
-    gameLog.innerHTML = "<strong style='font-size: 1.2em; color: #ebcb8b;'>Esperando a que el rival esté listo...</strong>";
-
-    //gameLog.innerText = "Esperando al rival...";
+    gameLog.innerHTML = `<strong style='font-size: 1.2em; color: #ebcb8b;'>${textoEspera}</strong>`;
     socket.emit('accion_juego', { accion: 'listo_siguiente_ronda' });
 });
 
 // ==========================================
-// 2. RECIBIR ÓRDENES DEL SERVIDOR
+// 3. RECIBIR ESTADO DEL JUEGO
 // ==========================================
-
-socket.on('actualizar_estado', (datos) => {
-    statusMsg.innerText = datos.mensaje;
-});
-
-socket.on('iniciar_partida', (datos) => {
-    setupScreen.classList.add('hidden');
-    gameScreen.classList.remove('hidden');
-});
 
 socket.on('actualizar_mesa', (datos) => {
     faseJuego = datos.fase;
     
     if (datos.fase !== 'recuento') {
         const contenedorRival = document.querySelector('#opponent-area .cards-placeholder');
-        if (contenedorRival) contenedorRival.innerHTML = '[Cartas del rival ocultas]';
+        if (contenedorRival) contenedorRival.innerHTML = `
+                <div class="carta"><img src="/static/img/dorso.jpg"></div>
+                <div class="carta"><img src="/static/img/dorso.jpg"></div>
+                <div class="carta"><img src="/static/img/dorso.jpg"></div>
+                <div class="carta"><img src="/static/img/dorso.jpg"></div>
+            `;
     }
 
-    // --- NUEVO: ACTUALIZAR PANEL DE APUESTAS ---
+    // PANEL DE APUESTAS
     const logDiv = document.getElementById('betting-log');
     if (datos.fase === 'apuestas' || datos.fase === 'recuento') {
         logDiv.classList.remove('hidden');
     
-        let fAct = datos.apuestas.fase_actual;
+        let fAct = datos.apuestas ? datos.apuestas.fase_actual : '';
         
-        // Iluminamos la fase activa para que se vea claro dónde estamos apostando
         let gStyle = fAct === 'Grande' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
         let cStyle = fAct === 'Chica' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
         let pStyle = fAct === 'Pares' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
         let jStyle = fAct === 'Juego' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
     
         let htmlBotes = `
-            <p id="res-Grande">Grande: ${datos.apuestas.botes.Grande}</p>
-            <p id="res-Chica">Chica: ${datos.apuestas.botes.Chica}</p>
-            <p id="res-Pares">Pares: ${datos.apuestas.botes.Pares}</p>
-            <p id="res-Juego">Juego: ${datos.apuestas.botes.Juego}</p>
-            <p id="res-Punto" class="hidden">Punto: ${datos.apuestas.botes.Juego}</p>
+            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
+                <p style="${gStyle}">Grande: ${datos.apuestas.botes.Grande}</p>
+                <p style="${cStyle}">Chica: ${datos.apuestas.botes.Chica}</p>
+                <p style="${pStyle}">Pares: ${datos.apuestas.botes.Pares}</p>
+                <p style="${jStyle}">Juego / Punto: ${datos.apuestas.botes.Juego}</p>
+            </div>
         `;
         
-        // Si hay una subida pendiente, pintamos la "Caja en el aire"
-        if (datos.apuestas.subida > 0 || datos.apuestas.subida === 'ÓRDAGO') {
+        if (datos.apuestas && (datos.apuestas.subida > 0 || datos.apuestas.subida === 'ÓRDAGO')) {
             const cantidadStr = datos.apuestas.subida === 'ÓRDAGO' ? 'un ÓRDAGO' : datos.apuestas.subida;
             const textoSube = datos.apuestas.soy_quien_sube ? `Has subido: ${cantidadStr}` : `Te suben: ${cantidadStr}`;
-            const colorSube = datos.apuestas.soy_quien_sube ? `#ebcb8b` : `#bf616a`; // Amarillo si es tuyo, rojo si es del rival
+            const colorSube = datos.apuestas.soy_quien_sube ? `#ebcb8b` : `#bf616a`; 
             
             htmlBotes += `
             <div id="caja-en-aire" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #88c0d0;">
@@ -140,9 +164,8 @@ socket.on('actualizar_mesa', (datos) => {
         }
         logDiv.innerHTML = htmlBotes;
     } else {
-        logDiv.classList.add('hidden'); // Ocultar en la fase de mus o descarte
+        if (logDiv) logDiv.classList.add('hidden');
     }
-    // FIN PANEL DE APUESTAS
 
     if (datos.mensaje_transicion) {
         gameLog.innerHTML = `<strong style="color:#ebcb8b; font-size: 1.2em;">${datos.mensaje_transicion}</strong>`;
@@ -150,27 +173,22 @@ socket.on('actualizar_mesa', (datos) => {
         if (datos.es_mi_turno) {
             setTimeout(() => socket.emit('accion_juego', { accion: 'continuar_transicion' }), 3000);
         }
-        return; // Paramos de dibujar para que se quede congelado
+        return;
     }
 
-    // MAGIA 2: El Recuento Cinematográfico
     if (datos.fase === 'recuento') {
-        // ¡NUEVO! Ocultamos los paneles de apuestas antes de frenar el código
         document.getElementById('apuesta-iniciar').classList.add('hidden');
         document.getElementById('apuesta-responder').classList.add('hidden');
-        document.getElementById('caja-en-aire')?.classList.add('hidden');
+        const cajaEnAire = document.getElementById('caja-en-aire');
+        if (cajaEnAire) cajaEnAire.classList.add('hidden');
         mostrarRecuentoEstatico(datos);
-        //if (!window.animandoRecuento) animarRecuento(datos);
         return; 
     }
-   // window.animandoRecuento = false;
 
-    // Reseteamos las selecciones
     cartasSeleccionadas = [];
     const btnDescartar = document.getElementById('btn-descartar');
     if(btnDescartar) btnDescartar.innerText = 'Descartar (0)';
     
-    // 1. DIBUJAR CARTAS
     const contenedorCartas = document.getElementById('my-cards');
     contenedorCartas.innerHTML = ''; 
     
@@ -178,7 +196,7 @@ socket.on('actualizar_mesa', (datos) => {
         datos.mis_cartas.forEach((carta, index) => {
             const div = document.createElement('div');
             div.className = 'carta';
-            div.innerText = carta.texto;
+            div.innerHTML = `<img src="${carta.img}" alt="${carta.texto}">`;
             
             div.onclick = () => {
                 if (datos.fase === 'descarte' && !datos.descartes_listos) {
@@ -200,20 +218,17 @@ socket.on('actualizar_mesa', (datos) => {
         contenedorCartas.innerHTML = 'Tus cartas aparecerán aquí';
     }
 
-    // 2. ACTUALIZAR TEXTOS
     document.getElementById('puntos-mios').innerText = datos.mis_puntos;
     document.getElementById('puntos-rival').innerText = datos.puntos_rival;
     document.getElementById('mi-rol').innerText = datos.soy_mano ? "(Eres Mano)" : "(Eres Postre)";
     document.getElementById('mi-turno').classList.toggle('hidden', !datos.es_mi_turno);
     document.getElementById('turno-rival').classList.toggle('hidden', datos.es_mi_turno);
-    // --- NUEVO: TEXTOS DE PARTIDAS GLOBALES ---
+    
     if(document.getElementById('partidas-mios')) {
         document.getElementById('partidas-mios').innerText = datos.mis_partidas;
         document.getElementById('partidas-rival').innerText = datos.partidas_rival;
         document.querySelectorAll('.mejor-de-texto').forEach(el => el.innerText = `(Al mejor de ${datos.al_mejor_de})`);
     }
-
-
 
     if (datos.fase === 'descarte' && datos.descartes_listos) {
         gameLog.innerText = "Esperando a que el rival se descarte...";
@@ -224,11 +239,7 @@ socket.on('actualizar_mesa', (datos) => {
         }
     }
 
-
-
-
-// 3. MOSTRAR BOTONES SEGÚN LA FASE
-    mostrarBotones([]); // Limpiamos todos los botones generales por defecto
+    mostrarBotones([]); 
     document.getElementById('apuesta-iniciar').classList.add('hidden');
     document.getElementById('apuesta-responder').classList.add('hidden');
 
@@ -236,13 +247,11 @@ socket.on('actualizar_mesa', (datos) => {
         if (!datos.descartes_listos) mostrarBotones(['btn-descartar']);
         document.getElementById('btn-descartar').disabled = true;
     } else if (datos.es_mi_turno) {
-        
         if (datos.fase === 'espera_reparto') {
             mostrarBotones(['btn-deal']);
         } else if (datos.fase === 'mus') {
             mostrarBotones(['btn-mus', 'btn-nomus']);
         } else if (datos.fase === 'apuestas') {
-            // Forzamos a que el contenedor principal sea visible
             document.getElementById('action-buttons').classList.remove('hidden');
             
             if (datos.apuestas && datos.apuestas.subida === 0) {
@@ -250,7 +259,6 @@ socket.on('actualizar_mesa', (datos) => {
             } else if (datos.apuestas) {
                 document.getElementById('apuesta-responder').classList.remove('hidden');
                 
-                // Bloqueamos el input de subir si hay un órdago en la mesa
                 let ocultarSubir = datos.apuestas.subida === 'ÓRDAGO';
                 document.getElementById('in-subir').classList.toggle('hidden', ocultarSubir);
                 document.getElementById('btn-subir').classList.toggle('hidden', ocultarSubir);
@@ -261,7 +269,7 @@ socket.on('actualizar_mesa', (datos) => {
 });
 
 // ==========================================
-// 3. UTILIDADES VISUALES
+// 4. UTILIDADES VISUALES
 // ==========================================
 function mostrarBotones(ids) {
     const contenedor = document.getElementById('action-buttons');
@@ -281,93 +289,6 @@ function mostrarBotones(ids) {
     }
 }
 
-
-// Variable global para no repetir la animación
-window.animandoRecuento = false;
-
-async function animarRecuento(datos) {
-    window.animandoRecuento = true;
-    mostrarBotones([]);
-    
-    // 1. Enseñar las cartas del rival (la tabla de apuestas se queda intacta)
-    const contenedorRival = document.querySelector('#opponent-area .cards-placeholder');
-    contenedorRival.innerHTML = '';
-    
-    if (datos.cartas_rival) {
-        datos.cartas_rival.forEach(c => {
-            const d = document.createElement('div');
-            d.className = 'carta'; 
-            d.style.backgroundColor = '#d8dee9'; 
-            d.style.color = 'black';
-            d.innerText = c.texto;
-            contenedorRival.appendChild(d);
-        });
-    }
-
-    // 2. Preparar el contenedor del registro blindado
-    const gameLog = document.getElementById('game-log');
-    gameLog.innerHTML = "<strong style='font-size: 1.2em; color: #88c0d0;'>¡Cartas arriba! Iniciando recuento...</strong>";
-    
-    // Creamos una caja invisible donde irán cayendo los textos para que el navegador no los borre
-    const cajaMensajes = document.createElement('div');
-    cajaMensajes.style.marginTop = "15px";
-    cajaMensajes.style.textAlign = "left";
-    cajaMensajes.style.display = "inline-block";
-    gameLog.appendChild(cajaMensajes);
-
-    await new Promise(r => setTimeout(r, 2000));
-
-    let puntosFinalesMios = datos.mis_puntos;
-    let puntosFinalesRival = datos.puntos_rival;
-
-    // 3. Imprimir el desglose paso a paso
-    if (datos.recuento && datos.recuento.length > 0) {
-        for (let paso of datos.recuento) {
-            
-            // Construimos el mensaje exacto
-            let sujeto = paso.gano_yo ? "Te llevas" : "El rival se lleva";
-            let nombreFase = paso.fase.toUpperCase();
-            
-            let textoFase = "";
-            if (nombreFase.includes('ACHANTADO')) {
-                let faseLimpia = nombreFase.replace(' (ACHANTADO)', '');
-                textoFase = `<i>(Alguien no quiso ver en ${faseLimpia})</i>`;
-            } else {
-                textoFase = `<b>${sujeto} ${paso.puntos_ganados} puntos</b> en <b>${nombreFase}</b>.`;
-            }
-
-            // Creamos un nuevo párrafo independiente y lo añadimos a la pantalla
-            let nuevoMensaje = document.createElement('p');
-            nuevoMensaje.style.margin = "5px 0";
-            nuevoMensaje.innerHTML = `👉 ${textoFase}`;
-            cajaMensajes.appendChild(nuevoMensaje);
-            
-            // Actualizamos los marcadores en vivo
-            puntosFinalesMios = paso.mis_puntos_finales;
-            puntosFinalesRival = paso.rival_puntos_finales;
-            document.getElementById('puntos-mios').innerText = puntosFinalesMios;
-            document.getElementById('puntos-rival').innerText = puntosFinalesRival;
-            
-            // Pausa de 3 segundos
-            await new Promise(r => setTimeout(r, 3000)); 
-        }
-    }
-
-    // 4. Finalizar
-    let mensajeFinal = document.createElement('div');
-    mensajeFinal.style.marginTop = "20px";
-
-    if (puntosFinalesMios >= 40 || puntosFinalesRival >= 40) {
-        let ganador = puntosFinalesMios >= 40 ? "🏆 ¡HAS GANADO LA PARTIDA!" : "💀 ¡EL RIVAL HA GANADO LA PARTIDA!";
-        mensajeFinal.innerHTML = `<strong style="font-size: 1.5em; color: #a3be8c;">${ganador}</strong>`;
-        gameLog.appendChild(mensajeFinal);
-    } else {
-        mensajeFinal.innerHTML = "<em>Comprueba los puntos.</em>";
-        gameLog.appendChild(mensajeFinal);
-        mostrarBotones(['btn-next-round']);
-    }
-}
-
 function mostrarRecuentoEstatico(datos) {
     mostrarBotones([]);
     
@@ -378,9 +299,7 @@ function mostrarRecuentoEstatico(datos) {
             datos.cartas_rival.forEach(c => {
                 const d = document.createElement('div');
                 d.className = 'carta'; 
-                d.style.backgroundColor = '#d8dee9'; 
-                d.style.color = 'black';
-                d.innerText = c.texto;
+                d.innerHTML = `<img src="${c.img}" alt="${c.texto}">`;
                 contenedorRival.appendChild(d);
             });
         }
@@ -388,12 +307,11 @@ function mostrarRecuentoEstatico(datos) {
 
     document.getElementById('puntos-mios').innerText = datos.mis_puntos;
     document.getElementById('puntos-rival').innerText = datos.puntos_rival;
-    // --- NUEVO: ACTUALIZAR LAS PARTIDAS GLOBALES EN LA PANTALLA FINAL ---
+    
     if(document.getElementById('partidas-mios')) {
         document.getElementById('partidas-mios').innerText = datos.mis_partidas;
         document.getElementById('partidas-rival').innerText = datos.partidas_rival;
     }
-
 
     const gameLog = document.getElementById('game-log');
     let htmlRecuento = "<strong style='font-size: 1.2em; color: #88c0d0;'>Resultados de la ronda:</strong><br><br>";
@@ -406,7 +324,6 @@ function mostrarRecuentoEstatico(datos) {
         htmlRecuento += "<em>(Hubo un error o la ronda no tuvo apuestas válidas)</em><br>";
     }
 
-    // 4. Decidir si se acaba la ronda, la partida o el match
     let btnNext = document.getElementById('btn-next-round');
 
     if (datos.mis_puntos >= 40 || datos.puntos_rival >= 40) {
@@ -417,14 +334,14 @@ function mostrarRecuentoEstatico(datos) {
             const txtGlobal = datos.mis_puntos >= 40 ? "🏆 ¡HAS GANADO EL MATCH!" : "💀 ¡EL RIVAL HA GANADO EL MATCH!";
             htmlRecuento += `<br><strong style="font-size: 1.5em; color: #a3be8c;">${txtGlobal}</strong>`;
             gameLog.innerHTML = htmlRecuento;
-            // No mostramos botón, se acabó todo
         } else {
-        gameLog.innerHTML = htmlRecuento;
-        btnNext.innerText = "Siguiente partida";
-        mostrarBotones(['btn-next-round']);
+            gameLog.innerHTML = htmlRecuento;
+            if (btnNext) btnNext.innerText = "Siguiente partida";
+            mostrarBotones(['btn-next-round']);
         }
     } else {
         gameLog.innerHTML = htmlRecuento;
+        if (btnNext) btnNext.innerText = "Siguiente ronda";
         mostrarBotones(['btn-next-round']);
     }
 }

@@ -1,106 +1,126 @@
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit
-# Importamos la clase que has guardado en mus_mecanicas.py
+from flask_socketio import SocketIO, emit, join_room, leave_room
+import random
+import string
 from mus_mecanicas import PartidaMus
 
 app = Flask(__name__, static_folder='static', template_folder='.')
 app.config['SECRET_KEY'] = 'clave_secreta_mus'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Variables globales para la sala de juego
-jugadores = {}  # Diccionario para guardar { 'id_secreto_sid': 'Nombre del Jugador' }
-partida_actual = None
+# --- NUEVA ARQUITECTURA MULTIJUGADOR ---
+# jugadores = { 'sid': {'nombre': 'Juan', 'sala': 'A1B2'} }
+jugadores = {}  
+# salas = { 'A1B2': {'estado': 'esperando', 'sids': [sid1, sid2], 'motor': PartidaMus} }
+salas = {}      
 
-show_global_log = True #we print a global log in the terminal for debugging purposes, but you can set it to False if you want a cleaner console
+show_global_log = True 
 
-# --- RUTAS WEB ---
+def generar_codigo():
+    letras = string.ascii_uppercase + string.digits
+    return ''.join(random.choice(letras) for _ in range(4))
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# --- FUNCIONES DE COMUNICACIÓN (WEBSOCKETS) ---
+# --- 1. GESTIÓN DE SALAS ---
 
-@socketio.on('unirse_partida')
-def handle_unirse(datos):
-    global partida_actual
+@socketio.on('crear_sala')
+def handle_crear_sala(datos):
+    sid = request.sid
+    nombre = datos.get('nombre', 'Jugador 1')
     
-    sid_jugador = request.sid # ID secreto y único de la pestaña del navegador
-    nombre = datos.get('nombre', 'Desconocido')
+    codigo = generar_codigo()
+    while codigo in salas:
+        codigo = generar_codigo()
+        
+    jugadores[sid] = {'nombre': nombre, 'sala': codigo}
+    join_room(codigo) # Función nativa de SocketIO para aislar la comunicación
     
-    if len(jugadores) < 2 and sid_jugador not in jugadores:
-        jugadores[sid_jugador] = nombre
-        print(f"👉 {nombre} se ha unido (ID: {sid_jugador})")
+    salas[codigo] = {'estado': 'esperando', 'sids': [sid]}
+    
+    print(f"👉 {nombre} ha creado la sala {codigo}")
+    emit('sala_creada', {'codigo': codigo}, room=sid)
+
+@socketio.on('unirse_sala')
+def handle_unirse_sala(datos):
+    sid = request.sid
+    nombre = datos.get('nombre', 'Jugador 2')
+    codigo = datos.get('codigo', '').upper()
+    
+    if codigo in salas and salas[codigo]['estado'] == 'esperando':
+        salas[codigo]['sids'].append(sid)
+        salas[codigo]['estado'] = 'jugando'
         
-        # Avisamos a todos de que alguien ha entrado
-        emit('actualizar_estado', {'mensaje': f'{nombre} se ha sentado en la mesa.'}, broadcast=True)
+        jugadores[sid] = {'nombre': nombre, 'sala': codigo}
+        join_room(codigo)
         
-        # Si ya hay dos jugadores, ¡ARRANCAMOS!
-        if len(jugadores) == 2:
-            sids = list(jugadores.keys())
-            # Inicializamos la mecánica pasándole los dos IDs secretos
-            partida_actual = PartidaMus(sids[0], sids[1])
-            partida_actual.iniciar_ronda()
-            partida_actual.fase = 'espera_reparto'
-            partida_actual.turno_de = partida_actual.id_postre
-            # Avisamos del arranque
-            emit('iniciar_partida', {'mensaje': '¡La partida comienza!'}, broadcast=True)
-            # Repartimos la información
-            enviar_estado_a_jugadores()
+        print(f"👉 {nombre} se ha unido a la sala {codigo}. ¡Arrancamos!")
+        
+        # Instanciamos el motor de Mus para esta sala
+        j1_sid = salas[codigo]['sids'][0]
+        j2_sid = sid
+        partida = PartidaMus(j1_sid, j2_sid)
+        partida.iniciar_ronda()
+        salas[codigo]['motor'] = partida
+        
+        # Avisamos a los que están en la sala para que cambien de pantalla
+        emit('iniciar_partida', {'mensaje': '¡La partida comienza!'}, room=codigo)
+        enviar_estado_a_jugadores(codigo)
     else:
-        emit('actualizar_estado', {'mensaje': 'La sala está llena o ya estás dentro.'}, room=sid_jugador)
+        emit('error_sala', {'mensaje': 'El código no existe o la sala está llena.'}, room=sid)
+
+# --- 2. ACCIONES DE JUEGO AISLADAS ---
 
 @socketio.on('accion_juego')
 def handle_accion_juego(datos):
-    global partida_actual
-    if not partida_actual: return
-    
     sid_jugador = request.sid
+    if sid_jugador not in jugadores: return
+    
+    codigo = jugadores[sid_jugador]['sala']
+    if codigo not in salas or salas[codigo]['estado'] != 'jugando': return
+    
+    # Extraemos el motor específico de la sala donde está este jugador
+    partida_actual = salas[codigo]['motor']
     accion = datos.get('accion')
     
-    # 1. Acciones por turnos (Repartir, Mus, Apuestas)
     if sid_jugador == partida_actual.turno_de:
         if accion == 'repartir':
             partida_actual.repartir_inicial()
-            enviar_estado_a_jugadores()
-            
+            enviar_estado_a_jugadores(codigo)
         elif accion == 'mus':
             partida_actual.cantar_mus(sid_jugador, True)
-            enviar_estado_a_jugadores()
-            
+            enviar_estado_a_jugadores(codigo)
         elif accion == 'no_mus':
             partida_actual.cantar_mus(sid_jugador, False)
-            enviar_estado_a_jugadores()
-
+            enviar_estado_a_jugadores(codigo)
         elif accion in ['pasar', 'envidar', 'subir', 'ver', 'ordago', 'nover']:
             cantidad = datos.get('cantidad', 0)
             partida_actual.accion_apuesta(sid_jugador, accion, cantidad)
-            enviar_estado_a_jugadores()
+            enviar_estado_a_jugadores(codigo)
 
-    # 2. Acciones simultáneas (Descartes)
     if accion == 'descartar' and partida_actual.fase == 'descarte':
         if not partida_actual.estado[sid_jugador]['descartes_listos']:
             indices_a_tirar = datos.get('indices', [])
             partida_actual.procesar_descarte(sid_jugador, indices_a_tirar)
-            enviar_estado_a_jugadores()
+            enviar_estado_a_jugadores(codigo)
 
-    # 3. Acciones de sistema (Transiciones y nueva ronda)
     if accion == 'continuar_transicion':
         partida_actual.mensaje_transicion = None
-        # CORRECCIÓN: Llamamos a preparar_subfase para evaluar la siguiente fase limpiamente
         partida_actual.preparar_subfase() 
-        enviar_estado_a_jugadores()
+        enviar_estado_a_jugadores(codigo)
         
     elif accion == 'listo_siguiente_ronda':
-        if getattr(partida_actual, 'match_finalizado', False): #partida_actual.estado[partida_actual.j1]['puntos'] >= 40 or partida_actual.estado[partida_actual.j2]['puntos'] >= 40:
+        if getattr(partida_actual, 'match_finalizado', False):
             return 
             
         if sid_jugador not in partida_actual.jugadores_listos:
             partida_actual.jugadores_listos.append(sid_jugador)
             
         if len(partida_actual.jugadores_listos) == 2:
-            
             if partida_actual.estado[partida_actual.j1]['puntos'] >= 40 or partida_actual.estado[partida_actual.j2]['puntos'] >= 40:
-                partida_actual.reiniciar_partida() # Resetea a 0 los puntos de ambos jugadores, cambia roles y arranca una nueva ronda
+                partida_actual.reiniciar_partida() 
             else:
                 partida_actual.cambiar_roles() 
                 partida_actual.iniciar_ronda() 
@@ -109,56 +129,35 @@ def handle_accion_juego(datos):
             
             partida_actual.jugadores_listos = []
             partida_actual.recuento_calculado = False
-            enviar_estado_a_jugadores()
+            enviar_estado_a_jugadores(codigo)
 
+# --- 3. REPARTO CIEGO POR SALA ---
 
-
-@socketio.on('accion_apuesta')
-def handle_apuesta(datos):
-    global partida_actual
-    if not partida_actual:
-        return
-        
-    sid_jugador = request.sid
-    accion = datos.get('accion')
-    cantidad = datos.get('cantidad', 0)
-    
-    print(f"Recibida acción: {jugadores[sid_jugador]} hace {accion} {cantidad}")
-    
-    # Aquí en el futuro llamaremos a: partida_actual.accion_apuesta(sid_jugador, accion, cantidad)
-    
-    # Después de procesar la acción, volvemos a enviar la mesa actualizada a ambos
-    enviar_estado_a_jugadores()
-
-
-
-# --- FUNCIÓN CLAVE: EL REPARTO CIEGO ---
-def enviar_estado_a_jugadores():
+def enviar_estado_a_jugadores(codigo_sala):
     global show_global_log
-    global partida_actual
-    if not partida_actual: return
+    sala = salas.get(codigo_sala)
+    if not sala: return
+    partida_actual = sala['motor']
         
-    for sid in jugadores.keys():
+    for sid in sala['sids']:
         estado_del_jugador = partida_actual.estado[sid]
         es_mi_turno = (sid == partida_actual.turno_de)
         soy_mano = (sid == partida_actual.id_mano)
-        
-        # Identificamos quién es el rival para poder cotillear sus descartes
         rival_sid = partida_actual.id_postre if sid == partida_actual.id_mano else partida_actual.id_mano
         
-        # Generamos el mensaje superior según la fase exacta en la que estemos
         if partida_actual.fase == 'descarte':
             mensaje = "Fase: DESCARTE. Selecciona qué cartas quieres tirar."
         elif partida_actual.fase == 'apuestas':
             if partida_actual.indice_fase < len(partida_actual.fases_apuesta):
                 n_fase = partida_actual.fases_apuesta[partida_actual.indice_fase]
-                mensaje = f"Fase de {n_fase.upper()}. Turno de: {jugadores[partida_actual.turno_de]}"
+                nombre_turno = jugadores[partida_actual.turno_de]['nombre']
+                mensaje = f"Fase de {n_fase.upper()}. Turno de: {nombre_turno}"
             else:
                 mensaje = "Fase de RECUENTO..."
         else:
-            mensaje = f"Fase: {partida_actual.fase.upper()}. Turno de: {jugadores[partida_actual.turno_de]}"
+            nombre_turno = jugadores[partida_actual.turno_de]['nombre'] if partida_actual.turno_de else "..."
+            mensaje = f"Fase: {partida_actual.fase.upper()}. Turno de: {nombre_turno}"
         
-        # Construimos el diccionario seguro para la fase de apuestas
         info_apuestas = {
             'fase_actual': '',
             'subida': partida_actual.subida_pendiente,
@@ -178,21 +177,14 @@ def enviar_estado_a_jugadores():
             for paso in pasos_crudos:
                 gano_yo = (paso['ganador_sid'] == sid)
                 sujeto = "Has" if gano_yo else "El rival ha"
-                
-                # Si es un achante sin puntos en el recuento, va entre paréntesis
                 if paso['texto_fase'].startswith('('):
                     datos_recuento.append(f"<i>{paso['texto_fase']}</i>")
                 else:
                     datos_recuento.append(f"<b>{sujeto}</b> {paso['texto_fase']}")
 
         if show_global_log:
-            print(f"📤 Enviando estado a {jugadores[sid]}: Fase {partida_actual.fase}, Turno de {jugadores[partida_actual.turno_de]}")
-            print(f"   Puntos propios: {estado_del_jugador['puntos']}")
-            print(f"   Puntos rival: {partida_actual.estado[rival_sid]['puntos']}")
-            print(f"   Apuestas: {info_apuestas}")
-            print(f"   Recuento: {datos_recuento}")
+            print(f"📤 [SALA {codigo_sala}] Estado a {jugadores[sid]['nombre']}: Fase {partida_actual.fase}")
 
-        # Enviamos un paquete de datos completo y blindado a esta pestaña concreta
         emit('actualizar_mesa', {
             'fase': partida_actual.fase,
             'es_mi_turno': es_mi_turno,
@@ -213,10 +205,6 @@ def enviar_estado_a_jugadores():
             'al_mejor_de': partida_actual.al_mejor_de,
             'match_finalizado': partida_actual.match_finalizado
         }, room=sid)
-
-
-
-
 
 if __name__ == '__main__':
     print("🚀 Servidor de Mus iniciado en http://localhost:5001")
