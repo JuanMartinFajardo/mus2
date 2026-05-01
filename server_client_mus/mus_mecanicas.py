@@ -192,10 +192,12 @@ class PartidaMus:
         #random.shuffle(self.baraja)
         self.descartes = []
         
+        self.estado[self.j1]['cartas'] = []
+        self.estado[self.j2]['cartas'] = []
       #  self.estado[self.j1]['cartas'] = self.robar(4)
        # self.estado[self.j2]['cartas'] = self.robar(4)
         
-        #self.fase = 'mus'
+        self.fase = 'espera_reparto' #maybe comment
         self.estado[self.j1]['quiere_mus'] = None
         self.estado[self.j2]['quiere_mus'] = None
         self.turno_de = self.id_mano # o postre
@@ -319,6 +321,7 @@ class PartidaMus:
                 # Pase corrido. Punto de pase en Grande, Chica o Punto.
                 es_punto = (nombre_fase == 'Juego' and not tiene_juego(self.estado[self.id_mano]['cartas']) and not tiene_juego(self.estado[self.id_postre]['cartas']))
                 punto_pase = 1 if nombre_fase in ['Grande', 'Chica'] or es_punto else 0
+                #punto_pase = 1 if nombre_fase in ['Grande', 'Chica'] else 0
                 self.avanzar_subfase(punto_pase)
             else:
                 self.turno_de = rival
@@ -459,7 +462,7 @@ class PartidaMus:
                     if not tiene_juego(cartas_m) and not tiene_juego(cartas_p):
                         n_log = 'Punto'
                         if not ganador_sid: ganador_sid = self.id_mano if comp_punto(cartas_m, cartas_p) == 'mano' else self.id_postre
-                        pts_bonus = 0
+                        pts_bonus = 1
                     else:
                         if not ganador_sid:
                             if tiene_juego(cartas_m) and not tiene_juego(cartas_p): ganador_sid = self.id_mano

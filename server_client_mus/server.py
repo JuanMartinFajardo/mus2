@@ -104,7 +104,7 @@ def handle_accion_juego(datos):
             partida_actual.turno_de = partida_actual.id_postre
             partida_actual.jugadores_listos = []
             partida_actual.recuento_calculado = False
-        enviar_estado_a_jugadores()
+            enviar_estado_a_jugadores()
 
 
 

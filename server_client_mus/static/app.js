@@ -66,7 +66,16 @@ document.getElementById('btn-subir').addEventListener('click', () => {
 
 document.getElementById('btn-next-round').addEventListener('click', () => {
     mostrarBotones([]);
-    gameLog.innerText = "Esperando al rival...";
+    // Limpiamos la pantalla visualmente por completo
+    document.getElementById('my-cards').innerHTML = '';
+    const contenedorRival = document.querySelector('#opponent-area .cards-placeholder');
+    if (contenedorRival) contenedorRival.innerHTML = '';
+    
+    // Ponemos el mensaje en grande y en amarillo para que destaque
+    const gameLog = document.getElementById('game-log');
+    gameLog.innerHTML = "<strong style='font-size: 1.2em; color: #ebcb8b;'>Esperando a que el rival esté listo...</strong>";
+
+    //gameLog.innerText = "Esperando al rival...";
     socket.emit('accion_juego', { accion: 'listo_siguiente_ronda' });
 });
 
@@ -90,6 +99,45 @@ socket.on('actualizar_mesa', (datos) => {
         const contenedorRival = document.querySelector('#opponent-area .cards-placeholder');
         if (contenedorRival) contenedorRival.innerHTML = '[Cartas del rival ocultas]';
     }
+
+    // --- NUEVO: ACTUALIZAR PANEL DE APUESTAS ---
+    const logDiv = document.getElementById('betting-log');
+    if (datos.fase === 'apuestas' || datos.fase === 'recuento') {
+        logDiv.classList.remove('hidden');
+    
+        let fAct = datos.apuestas.fase_actual;
+        
+        // Iluminamos la fase activa para que se vea claro dónde estamos apostando
+        let gStyle = fAct === 'Grande' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
+        let cStyle = fAct === 'Chica' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
+        let pStyle = fAct === 'Pares' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
+        let jStyle = fAct === 'Juego' ? 'color:#ebcb8b; font-weight:bold; font-size:1.1em;' : '';
+    
+        let htmlBotes = `
+            <p id="res-Grande">Grande: ${datos.apuestas.botes.Grande}</p>
+            <p id="res-Chica">Chica: ${datos.apuestas.botes.Chica}</p>
+            <p id="res-Pares">Pares: ${datos.apuestas.botes.Pares}</p>
+            <p id="res-Juego">Juego: ${datos.apuestas.botes.Juego}</p>
+            <p id="res-Punto" class="hidden">Punto: ${datos.apuestas.botes.Juego}</p>
+        `;
+        
+        // Si hay una subida pendiente, pintamos la "Caja en el aire"
+        if (datos.apuestas.subida > 0 || datos.apuestas.subida === 'ÓRDAGO') {
+            const cantidadStr = datos.apuestas.subida === 'ÓRDAGO' ? 'un ÓRDAGO' : datos.apuestas.subida;
+            const textoSube = datos.apuestas.soy_quien_sube ? `Has subido: ${cantidadStr}` : `Te suben: ${cantidadStr}`;
+            const colorSube = datos.apuestas.soy_quien_sube ? `#ebcb8b` : `#bf616a`; // Amarillo si es tuyo, rojo si es del rival
+            
+            htmlBotes += `
+            <div id="caja-en-aire" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #88c0d0;">
+                <p style="font-size: 1.1em; margin-bottom: 5px;">Apuesta vista: <span class="highlight">${datos.apuestas.apuesta_vista}</span></p>
+                <p style="font-size: 1.2em; font-weight: bold; color: ${colorSube}; margin: 0;">${textoSube}</p>
+            </div>`;
+        }
+        logDiv.innerHTML = htmlBotes;
+    } else {
+        logDiv.classList.add('hidden'); // Ocultar en la fase de mus o descarte
+    }
+    // FIN PANEL DE APUESTAS
 
     if (datos.mensaje_transicion) {
         gameLog.innerHTML = `<strong style="color:#ebcb8b; font-size: 1.2em;">${datos.mensaje_transicion}</strong>`;
@@ -163,35 +211,7 @@ socket.on('actualizar_mesa', (datos) => {
         }
     }
 
-    // --- NUEVO: ACTUALIZAR PANEL DE APUESTAS ---
-    const logDiv = document.getElementById('betting-log');
-    if (datos.fase === 'apuestas' || datos.fase === 'recuento') {
-        logDiv.classList.remove('hidden');
-        
-        let htmlBotes = `
-            <p id="res-Grande">Grande: ${datos.apuestas.botes.Grande}</p>
-            <p id="res-Chica">Chica: ${datos.apuestas.botes.Chica}</p>
-            <p id="res-Pares">Pares: ${datos.apuestas.botes.Pares}</p>
-            <p id="res-Juego">Juego: ${datos.apuestas.botes.Juego}</p>
-            <p id="res-Punto" class="hidden">Punto: ${datos.apuestas.botes.Juego}</p>
-        `;
-        
-        // Si hay una subida pendiente, pintamos la "Caja en el aire"
-        if (datos.apuestas.subida > 0 || datos.apuestas.subida === 'ÓRDAGO') {
-            const cantidadStr = datos.apuestas.subida === 'ÓRDAGO' ? 'un ÓRDAGO' : datos.apuestas.subida;
-            const textoSube = datos.apuestas.soy_quien_sube ? `Has subido: ${cantidadStr}` : `Te suben: ${cantidadStr}`;
-            const colorSube = datos.apuestas.soy_quien_sube ? `#ebcb8b` : `#bf616a`; // Amarillo si es tuyo, rojo si es del rival
-            
-            htmlBotes += `
-            <div id="caja-en-aire" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #88c0d0;">
-                <p style="font-size: 1.1em; margin-bottom: 5px;">Apuesta vista: <span class="highlight">${datos.apuestas.apuesta_vista}</span></p>
-                <p style="font-size: 1.2em; font-weight: bold; color: ${colorSube}; margin: 0;">${textoSube}</p>
-            </div>`;
-        }
-        logDiv.innerHTML = htmlBotes;
-    } else {
-        logDiv.classList.add('hidden'); // Ocultar en la fase de mus o descarte
-    }
+
 
 
 // 3. MOSTRAR BOTONES SEGÚN LA FASE
